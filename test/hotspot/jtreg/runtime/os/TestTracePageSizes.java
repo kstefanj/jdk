@@ -22,9 +22,11 @@
  */
 
 /*
- * @test id=no-specific-gc
- * @summary Run test with default/user options.
+ * @test id=compiler-options
+ * @summary Run test with default/user options. Excluding ZGC since it fail
+ *          initialization if no large pages are available on the system.
  * @requires os.family == "linux"
+ * @requires vm.gc != "Z"
  * @run main/othervm -XX:+AlwaysPreTouch -Xlog:pagesize:ps-%p.log TestTracePageSizes
  * @run main/othervm -XX:+AlwaysPreTouch -Xlog:pagesize:ps-%p.log -XX:-SegmentedCodeCache TestTracePageSizes
  * @run main/othervm -XX:+AlwaysPreTouch -Xlog:pagesize:ps-%p.log -XX:-SegmentedCodeCache -XX:+UseLargePages TestTracePageSizes
@@ -83,22 +85,25 @@ public class TestTracePageSizes {
     // match as little as possible so each "segment" in the file
     // will generate a match.
     private static void parseSmaps() throws Exception {
-        String smapsPatternString = "(\\w+)-(\\w+).*?" +
-                                    "KernelPageSize:\\s*(\\d*) kB.*?" +
-                                    "THPeligible:\\s*([01])";
-        Pattern smapsPattern = Pattern.compile(smapsPatternString, Pattern.DOTALL);
-
+        // Now use the pattern to create a list of all memory rages used
+        // by the JVM running the test.
+        Pattern smapsPattern = Pattern.compile(RangeWithPageSize.smapsPatternString, Pattern.DOTALL);
         Scanner smapsScanner = new Scanner(new File("/proc/self/smaps"));
         smapsScanner.findAll(smapsPattern).forEach(mr -> {
             String start = mr.group(1);
             String end = mr.group(2);
             String ps = mr.group(3);
-            String thp = mr.group(4);
-            ranges.add(new RangeWithPageSize(start, end, ps, thp));
+            String vmFlags = mr.group(4);
+
+            // Create a range given the match and add it to the list.
+            RangeWithPageSize range = new RangeWithPageSize(start, end, ps, vmFlags);
+            ranges.add(range);
+            debug("Added range: " + range);
         });
         smapsScanner.close();
     }
 
+    // Search for a range including the given address.
     private static RangeWithPageSize getRange(String addr) {
         long laddr = Long.decode(addr);
         for (RangeWithPageSize range : ranges) {
@@ -154,7 +159,13 @@ public class TestTracePageSizes {
 
                 String address = trace.group(1);
                 String pageSize = trace.group(2);
+
                 RangeWithPageSize range = getRange(address);
+                if (range == null) {
+                    debug("Could not find range for: " + line);
+                    throw new AssertionError("No memory range found for address: " + address);
+                }
+
                 long pageSizeFromSmaps = range.getPageSize();
                 long pageSizeFromTrace = pageSizeInKB(pageSize);
 
@@ -162,7 +173,7 @@ public class TestTracePageSizes {
                 debug("From smaps: " + range);
 
                 if (pageSizeFromSmaps != pageSizeFromTrace) {
-                    if (pageSizeFromTrace > pageSizeFromSmaps && range.isThpEligible()) {
+                    if (pageSizeFromTrace > pageSizeFromSmaps && range.isTransparentHuge()) {
                         // Page sizes mismatch because we can't know what underlying page size will
                         // be used when THP is enabled. So this is not a failure.
                         debug("Success: " + pageSizeFromTrace + " > " + pageSizeFromSmaps + " and THP enabled");
@@ -186,25 +197,58 @@ public class TestTracePageSizes {
     }
 }
 
+// Class used to store information about memory ranges parsed
+// from /proc/self/smaps. The file contain a lot of information
+// about the different mappings done by an application, but the
+// lines we care about are:
+// 700000000-73ea00000 rw-p 00000000 00:00 0
+// ...
+// KernelPageSize:        4 kB
+// ...
+// VmFlags: rd wr mr mw me ac sd
+//
+// We use the VmFlags to know what kind of huge pages are used.
+// For transparent huge pages the KernelPageSize field will not
+// report the large page size.
 class RangeWithPageSize {
+    // Pattern used for parsing the smaps-file.
+    static String smapsPatternString = "(\\w+)-(\\w+).*?" +
+                                       "KernelPageSize:\\s*(\\d*) kB.*?" +
+                                       "VmFlags: ([\\w ]*)";
+
     private long start;
     private long end;
     private long pageSize;
-    private boolean thpEligible;
+    private boolean vmFlagHG;
+    private boolean vmFlagHT;
 
-    public RangeWithPageSize(String start, String end, String pageSize, String thp) {
+    public RangeWithPageSize(String start, String end, String pageSize, String vmFlags) {
         this.start = Long.parseUnsignedLong(start, 16);
         this.end = Long.parseUnsignedLong(end, 16);;
         this.pageSize = Long.parseLong(pageSize);
-        this.thpEligible = thp.equals("1");
+
+        // Check for vmFlags
+        vmFlagHG = false;
+        vmFlagHT = false;
+        for (String flag : vmFlags.split(" ")) {
+            if (flag.equals("ht")) {
+                vmFlagHT = true;
+            } else if (flag.equals("hg")) {
+                vmFlagHG = true;
+            }
+        }
     }
 
     public long getPageSize() {
         return pageSize;
     }
 
-    public boolean isThpEligible() {
-        return thpEligible;
+    public boolean isTransparentHuge() {
+        return vmFlagHG;
+    }
+
+    public boolean isExplicitHuge() {
+        return vmFlagHT;
     }
 
     public boolean includes(long addr) {
@@ -212,6 +256,7 @@ class RangeWithPageSize {
     }
 
     public String toString() {
-        return "[" + Long.toHexString(start) + ", " + Long.toHexString(end) + ") pageSize=" + pageSize + "KB isTHP=" + thpEligible;
+        return "[" + Long.toHexString(start) + ", " + Long.toHexString(end) + ") pageSize=" + pageSize +
+               "KB isTHP=" + vmFlagHG + " isHUGETLB="+vmFlagHT;
     }
 }
