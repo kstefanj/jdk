@@ -44,21 +44,28 @@ ReservedSpace::ReservedSpace() : _base(NULL), _size(0), _noaccess_prefix(0),
     _alignment(0), _special(false), _fd_for_heap(-1), _executable(false) {
 }
 
-ReservedSpace::ReservedSpace(size_t size, size_t preferred_page_size) : _fd_for_heap(-1) {
-  bool has_preferred_page_size = preferred_page_size != 0;
-  // Want to use large pages where possible and pad with small pages.
-  size_t page_size = has_preferred_page_size ? preferred_page_size : os::page_size_for_region_unaligned(size, 1);
+ReservedSpace::ReservedSpace(size_t size) : _fd_for_heap(-1) {
+  // Want to use large pages where possible, if the size is
+  // not large page aligned the mapping will be a mix between
+  // large and normal pages.
+  size_t page_size = os::page_size_for_region_unaligned(size, 1);
+  size_t alignment = os::vm_allocation_granularity();
   bool large_pages = page_size != (size_t)os::vm_page_size();
-  size_t alignment;
-  if (large_pages && has_preferred_page_size) {
-    alignment = MAX2(page_size, (size_t)os::vm_allocation_granularity());
-    // ReservedSpace initialization requires size to be aligned to the given
-    // alignment. Align the size up.
+  initialize(size, alignment, large_pages, NULL, false);
+}
+
+ReservedSpace::ReservedSpace(size_t size, size_t preferred_page_size) : _fd_for_heap(-1) {
+  assert(is_power_of_2(preferred_page_size), "invariant");
+
+  // When a page size has been given we don't want to mix
+  // large and normal pages. So when a large page size is
+  // given the size and alignment will be updated to match
+  // the page size.
+  size_t alignment = os::vm_allocation_granularity();;
+  bool large_pages = preferred_page_size != (size_t)os::vm_page_size();
+  if (large_pages) {
+    alignment = MAX2(preferred_page_size, alignment);
     size = align_up(size, alignment);
-  } else {
-    // Don't force the alignment to be large page aligned,
-    // since that will waste memory.
-    alignment = os::vm_allocation_granularity();
   }
   initialize(size, alignment, large_pages, NULL, false);
 }
