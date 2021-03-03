@@ -71,6 +71,9 @@ ReservedSpace::ReservedSpace(size_t size, size_t page_size) : _fd_for_heap(-1) {
 ReservedSpace::ReservedSpace(size_t size, size_t alignment,
                              size_t page_size,
                              char* requested_address) : _fd_for_heap(-1) {
+  // Alignment might be passed in as 0 to this constructor to indicate no
+  // specific alignment is requested, update it to be a valid alignment.
+  alignment = MAX2(alignment, (size_t) os::vm_allocation_granularity());
   initialize(size, alignment, page_size, requested_address, false);
 }
 
@@ -145,8 +148,8 @@ static bool failed_to_reserve_as_requested(char* base, char* requested_address,
   return true;
 }
 
-static char* map_normal(char* requested_address, const size_t size,
-                        const size_t alignment, int fd, bool exec) {
+static char* reserve_memory(char* requested_address, const size_t size,
+                            const size_t alignment, int fd, bool exec) {
   char* base;
   // Optimistically assume that the OS returns an aligned base pointer.
   // When reserving a large address range, most OSes seem to align to at
@@ -192,28 +195,26 @@ static char* map_normal(char* requested_address, const size_t size,
   return base;
 }
 
-static char* map_for_file(char* requested_address, const size_t size,
-                          const size_t alignment, int fd, bool exec) {
-  char* base = map_normal(requested_address, size, alignment, fd, exec);
-  if (UseLargePages && (!FLAG_IS_DEFAULT(UseLargePages) ||
-      !FLAG_IS_DEFAULT(LargePageSizeInBytes))) {
-    log_debug(gc, heap)("Ignoring UseLargePages since large page support is up to the file system of the backing file for Java heap");
-  }
-  return base;
+static bool use_explicit_large_pages(size_t page_size) {
+  return !os::can_commit_large_page_memory() &&
+         page_size != (size_t) os::vm_page_size();
 }
 
-static char* map_special(char* requested_address, const size_t size,
-                          const size_t alignment, const size_t page_size, bool exec) {
+static bool large_pages_requested() {
+  return UseLargePages &&
+         (!FLAG_IS_DEFAULT(UseLargePages) || !FLAG_IS_DEFAULT(LargePageSizeInBytes));
+}
 
-  log_trace(pagesize)("Trying large page mapping: size: " SIZE_FORMAT "%s, page size: "
+static char* reserve_memory_special(char* requested_address, const size_t size,
+                                    const size_t alignment, const size_t page_size, bool exec) {
+
+  log_trace(pagesize)("Attempt special mapping: size: " SIZE_FORMAT "%s, page size: "
                       SIZE_FORMAT "%s, alignment: " SIZE_FORMAT "%s",
                       byte_size_in_exact_unit(size), exact_unit_for_byte_size(size),
                       byte_size_in_exact_unit(page_size), exact_unit_for_byte_size(page_size),
                       byte_size_in_exact_unit(alignment), exact_unit_for_byte_size(alignment));
 
-  char* base = os::reserve_memory_special(size, alignment, requested_address,
-                                          exec);
-
+  char* base = os::reserve_memory_special(size, alignment, requested_address, exec);
   if (base != NULL) {
     if (failed_to_reserve_as_requested(base, requested_address, size, true)) {
       // OS ignored requested address. Try different address.
@@ -234,78 +235,92 @@ static char* map_special(char* requested_address, const size_t size,
   return base;
 }
 
+#ifdef ASSERT
+void ReservedSpace::assert_sizing(size_t size,
+                                  size_t alignment) {
+  const size_t granularity = os::vm_allocation_granularity();
+  assert(is_aligned(size, granularity),
+         "size not aligned to os::vm_allocation_granularity()");
+  assert(is_aligned(alignment, granularity),
+         "alignment not aligned to os::vm_allocation_granularity()");
+  assert(is_power_of_2(alignment),
+         "not a power of 2");
+}
+#endif
+
+void ReservedSpace::clear_members() {
+  _base = NULL;
+  _size = 0;
+  _special = false;
+  _executable = false;
+  _alignment = 0;
+  _noaccess_prefix = 0;
+}
+void ReservedSpace::set_members(size_t size,
+                                size_t alignment,
+                                char* base_address,
+                                bool special,
+                                bool executable) {
+  _base = base_address;
+  _size = size;
+  _special = special;
+  _executable = executable;
+  _alignment = alignment;
+}
+
 void ReservedSpace::initialize(size_t size,
                                size_t alignment,
                                size_t page_size,
                                char* requested_address,
                                bool executable) {
-  const size_t granularity = os::vm_allocation_granularity();
-  assert((size & (granularity - 1)) == 0,
-         "size not aligned to os::vm_allocation_granularity()");
-  assert((alignment & (granularity - 1)) == 0,
-         "alignment not aligned to os::vm_allocation_granularity()");
-  assert(alignment == 0 || is_power_of_2((intptr_t)alignment),
-         "not a power of 2");
+  assert_sizing(size, alignment);
 
-  alignment = MAX2(alignment, (size_t)os::vm_page_size());
-
-  _base = NULL;
-  _size = 0;
-  _special = false;
-  _executable = executable;
-  _alignment = 0;
-  _noaccess_prefix = 0;
+  clear_members();
   if (size == 0) {
     return;
   }
-
-  char* base = NULL;
-  bool special = false;
-  // Explicit large pages are used when transparent huge pages are disabled
-  // and a large page size has been provided.
-  bool explicit_lp = !os::can_commit_large_page_memory() && page_size != (size_t) os::vm_page_size();
 
   // There are basically three different cases that we need to handle below:
   // - Mapping backed by a file
   // - Mapping backed by explicit large pages
   // - Mapping backed by normal pages or transparent huge pages
-  // The first two are considered special and when used the whole mapped area
-  // is committed up front.
+  // The first two have restrictions that requires the whole mapping to be
+  // committed up front. To record this the ReservedSpace is marked 'special'.
+
   if (_fd_for_heap != -1) {
-    base = map_for_file(requested_address, size, alignment, _fd_for_heap, _executable);
-    special = true;
-  } else if (explicit_lp) {
+    // When there is a backing file directory for this space then whether
+    // large pages are allocated is up to the filesystem of the backing file.
+    // So UseLargePages is not taken into account for this reservation.
+    char* base = reserve_memory(requested_address, size, alignment, _fd_for_heap, executable);
+    set_members(size, alignment, base, true, executable);
+    return;
+  } else if (use_explicit_large_pages(page_size)) {
+    // System can't commit large pages i.e. use transparent huge pages and
+    // the page size passed in is large. To satisfy this request we use
+    // explicit large pages and these have to be committed up front to ensure
+    // no reservations are lost.
+
+    // Try satisfying the reservation using the requested page size, if
+    // multiple large page sizes are supported try to fall back to smaller
+    // large page sizes if possible.
     size_t try_page_size = page_size;
     do {
-      base = map_special(requested_address, size, alignment, try_page_size, _executable);
+      char* base = reserve_memory_special(requested_address, size, alignment, try_page_size, executable);
       if (base != NULL) {
-        break;
+        // Successful reservation using large pages.
+        set_members(size, alignment, base, true, executable);
+        return;
       }
       try_page_size = os::page_sizes().next_smaller(try_page_size);
     } while (try_page_size > (size_t) os::vm_page_size());
-
-    if (base == NULL) {
-
-      // Fall back to normal pages.
-      base = map_normal(requested_address, size, alignment, -1, _executable);
-    } else {
-      // Special mapping succeeded, mark space as special.
-      special = true;
-    }
-  } else {
-    base = map_normal(requested_address, size, alignment, -1, _executable);
   }
 
-  // Failed to satisfy mapping.
-  if (base == NULL) {
-    return;
+  // Not a 'special' reservation.
+  char* base = reserve_memory(requested_address, size, alignment, -1, executable);
+  if (base != NULL) {
+    // Successful mapping.
+    set_members(size, alignment, base, false, executable);
   }
-
-  // Done
-  _base = base;
-  _size = size;
-  _alignment = alignment;
-  _special = special;
 }
 
 ReservedSpace ReservedSpace::first_part(size_t partition_size, size_t alignment) {
@@ -370,12 +385,7 @@ void ReservedSpace::release() {
     } else{
       os::release_memory(real_base, real_size);
     }
-    _base = NULL;
-    _size = 0;
-    _noaccess_prefix = 0;
-    _alignment = 0;
-    _special = false;
-    _executable = false;
+    clear_members();
   }
 }
 
@@ -412,85 +422,37 @@ void ReservedHeapSpace::establish_noaccess_prefix() {
 }
 
 // Tries to allocate memory of size 'size' at address requested_address with alignment 'alignment'.
-// Does not check whether the reserved memory actually is at requested_address, as the memory returned
-// might still fulfill the wishes of the caller.
 // Assures the memory is aligned to 'alignment'.
 // NOTE: If ReservedHeapSpace already points to some reserved memory this is freed, first.
 void ReservedHeapSpace::try_reserve_heap(size_t size,
                                          size_t alignment,
-                                         size_t large,
+                                         size_t page_size,
                                          char* requested_address) {
   if (_base != NULL) {
     // We tried before, but we didn't like the address delivered.
     release();
   }
 
-  // If OS doesn't support demand paging for large page memory, we need
-  // to use reserve_memory_special() to reserve and pin the entire region.
-  // If there is a backing file directory for this space then whether
-  // large pages are allocated is up to the filesystem of the backing file.
-  // So we ignore the UseLargePages flag in this case.
-  bool special = large && !os::can_commit_large_page_memory();
-  if (special && _fd_for_heap != -1) {
-    special = false;
-    if (UseLargePages && (!FLAG_IS_DEFAULT(UseLargePages) ||
-                          !FLAG_IS_DEFAULT(LargePageSizeInBytes))) {
-      log_debug(gc, heap)("Cannot allocate large pages for Java Heap when AllocateHeapAt option is set.");
-    }
-  }
-  char* base = NULL;
-
   log_trace(gc, heap, coops)("Trying to allocate at address " PTR_FORMAT
                              " heap of size " SIZE_FORMAT_HEX,
                              p2i(requested_address),
                              size);
 
-  if (special) {
-    base = os::reserve_memory_special(size, alignment, requested_address, false);
+  // Initialize the reserved space to reserved the requested memory.
+  initialize(size, alignment, page_size, requested_address, false);
 
-    if (base != NULL) {
-      // Check alignment constraints.
-      assert((uintptr_t) base % alignment == 0,
-             "Large pages returned a non-aligned address, base: "
-             PTR_FORMAT " alignment: " SIZE_FORMAT_HEX,
-             p2i(base), alignment);
-      _special = true;
-    }
+  // Additional logging for when the heap fails to reserve large pages
+  // and they are requested by the user.
+  if (use_explicit_large_pages(page_size) && !_special && large_pages_requested()) {
+    log_debug(gc, heap, coops)("Reserve regular memory without large pages");
   }
 
-  if (base == NULL) {
-    // Failed; try to reserve regular memory below
-    if (UseLargePages && (!FLAG_IS_DEFAULT(UseLargePages) ||
-                          !FLAG_IS_DEFAULT(LargePageSizeInBytes))) {
-      log_debug(gc, heap, coops)("Reserve regular memory without large pages");
+  // An additional alignment check is needed for the heap reservation.
+  if (_base != NULL) {
+    if (!is_aligned(_base, alignment)) {
+      // Base not aligned, retry.
+      release();
     }
-
-    if (requested_address != 0) {
-      base = attempt_map_or_reserve_memory_at(requested_address, size, _fd_for_heap, executable());
-    } else {
-      // Optimistically assume that the OSes returns an aligned base pointer.
-      // When reserving a large address range, most OSes seem to align to at
-      // least 64K.
-      // If the returned memory is not aligned we will release and retry.
-      base = map_or_reserve_memory(size, _fd_for_heap, executable());
-    }
-  }
-  if (base == NULL) { return; }
-
-  // Done
-  _base = base;
-  _size = size;
-  _alignment = alignment;
-
-  // If heap is reserved with a backing file, the entire space has been committed. So set the _special flag to true
-  if (_fd_for_heap != -1) {
-    _special = true;
-  }
-
-  // Check alignment constraints
-  if ((((size_t)base) & (alignment - 1)) != 0) {
-    // Base not aligned, retry.
-    release();
   }
 }
 
@@ -691,6 +653,9 @@ ReservedHeapSpace::ReservedHeapSpace(size_t size, size_t alignment, size_t page_
     if (_fd_for_heap == -1) {
       vm_exit_during_initialization(
         err_msg("Could not create file for Heap at location %s", heap_allocation_directory));
+    }
+    if (use_explicit_large_pages(page_size) && large_pages_requested()) {
+      log_debug(gc, heap)("Cannot allocate large pages for Java Heap when AllocateHeapAt option is set.");
     }
   }
 

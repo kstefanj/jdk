@@ -48,6 +48,13 @@ class ReservedSpace {
   ReservedSpace(char* base, size_t size, size_t alignment, bool special,
                 bool executable);
  protected:
+  void assert_sizing(size_t size, size_t alignment) NOT_DEBUG_RETURN;
+  void clear_members();
+  void set_members(size_t size,
+                   size_t alignment,
+                   char* base_address,
+                   bool special,
+                   bool executable);
   void initialize(size_t size,
                   size_t alignment,
                   size_t page_size,
