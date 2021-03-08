@@ -3962,8 +3962,8 @@ char* os::Linux::reserve_memory_special_shm(size_t bytes, size_t alignment,
   return addr;
 }
 
-static void warn_on_large_pages_failure(char* req_addr, size_t bytes,
-                                        int error) {
+static void warn_on_reserve_special_failure(char* req_addr, size_t bytes,
+                                            size_t page_size, int error) {
   assert(error == ENOMEM, "Only expect to fail if no memory is available");
 
   bool warn_on_failure = UseLargePages &&
@@ -3973,8 +3973,9 @@ static void warn_on_large_pages_failure(char* req_addr, size_t bytes,
 
   if (warn_on_failure) {
     char msg[128];
-    jio_snprintf(msg, sizeof(msg), "Failed to reserve large pages memory req_addr: "
-                 PTR_FORMAT " bytes: " SIZE_FORMAT " (errno = %d).", req_addr, bytes, error);
+    jio_snprintf(msg, sizeof(msg), "Failed to reserve and commit memory req_addr: "
+                 PTR_FORMAT " bytes: " SIZE_FORMAT " page size: " SIZE_FORMAT
+                 " (errno = %d).", req_addr, bytes, page_size, error);
     warning("%s", msg);
   }
 }
@@ -3998,7 +3999,7 @@ char* os::Linux::reserve_and_commit_special(size_t bytes,
   char* addr = (char*)::mmap(req_addr, bytes, prot, flags, -1, 0);
 
   if (addr == MAP_FAILED) {
-    warn_on_large_pages_failure(req_addr, bytes, errno);
+    warn_on_reserve_special_failure(req_addr, bytes, page_size, errno);
     return NULL;
   }
 
