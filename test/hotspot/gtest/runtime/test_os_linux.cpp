@@ -46,8 +46,8 @@ namespace {
     char* const _ptr;
     const size_t _size;
    public:
-    static char* reserve_memory_special_huge_tlbfs(size_t bytes, size_t alignment, char* req_addr, bool exec) {
-      return os::Linux::reserve_memory_special_huge_tlbfs(bytes, alignment, req_addr, exec);
+    static char* reserve_memory_special_huge_tlbfs(size_t bytes, size_t alignment, size_t page_size, char* req_addr, bool exec) {
+      return os::Linux::reserve_memory_special_huge_tlbfs(bytes, alignment, page_size, req_addr, exec);
     }
     HugeTlbfsMemory(char* const ptr, size_t size) : _ptr(ptr), _size(size) { }
     ~HugeTlbfsMemory() {
@@ -99,7 +99,7 @@ TEST_VM(os_linux, reserve_memory_special_huge_tlbfs_only) {
   size_t lp = os::large_page_size();
 
   for (size_t size = lp; size <= lp * 10; size += lp) {
-    char* addr = HugeTlbfsMemory::reserve_memory_special_huge_tlbfs(size, lp, NULL, false);
+    char* addr = HugeTlbfsMemory::reserve_memory_special_huge_tlbfs(size, lp, lp, NULL, false);
 
     if (addr != NULL) {
       HugeTlbfsMemory mr(addr, size);
@@ -125,7 +125,7 @@ TEST_VM(os_linux, reserve_memory_special_huge_tlbfs_mixed_without_addr) {
   for (int i = 0; i < num_sizes; i++) {
     const size_t size = sizes[i];
     for (size_t alignment = ag; is_size_aligned(size, alignment); alignment *= 2) {
-      char* p = HugeTlbfsMemory::reserve_memory_special_huge_tlbfs(size, alignment, NULL, false);
+      char* p = HugeTlbfsMemory::reserve_memory_special_huge_tlbfs(size, alignment, lp, NULL, false);
       if (p != NULL) {
         HugeTlbfsMemory mr(p, size);
         EXPECT_PRED2(is_ptr_aligned, p, alignment) << " size = " << size;
@@ -164,7 +164,7 @@ TEST_VM(os_linux, reserve_memory_special_huge_tlbfs_mixed_with_good_req_addr) {
     const size_t size = sizes[i];
     for (size_t alignment = ag; is_size_aligned(size, alignment); alignment *= 2) {
       char* const req_addr = align_up(mapping, alignment);
-      char* p = HugeTlbfsMemory::reserve_memory_special_huge_tlbfs(size, alignment, req_addr, false);
+      char* p = HugeTlbfsMemory::reserve_memory_special_huge_tlbfs(size, alignment, lp, req_addr, false);
       if (p != NULL) {
         HugeTlbfsMemory mr(p, size);
         ASSERT_EQ(req_addr, p) << " size = " << size << ", alignment = " << alignment;
@@ -213,7 +213,7 @@ TEST_VM(os_linux, reserve_memory_special_huge_tlbfs_mixed_with_bad_req_addr) {
     const size_t size = sizes[i];
     for (size_t alignment = ag; is_size_aligned(size, alignment); alignment *= 2) {
       char* const req_addr = align_up(mapping, alignment);
-      char* p = HugeTlbfsMemory::reserve_memory_special_huge_tlbfs(size, alignment, req_addr, false);
+      char* p = HugeTlbfsMemory::reserve_memory_special_huge_tlbfs(size, alignment, lp, req_addr, false);
       HugeTlbfsMemory mr(p, size);
       // as the area around req_addr contains already existing mappings, the API should always
       // return NULL (as per contract, it cannot return another address)

@@ -214,7 +214,7 @@ static char* reserve_memory_special(char* requested_address, const size_t size,
                       byte_size_in_exact_unit(page_size), exact_unit_for_byte_size(page_size),
                       byte_size_in_exact_unit(alignment), exact_unit_for_byte_size(alignment));
 
-  char* base = os::reserve_memory_special(size, alignment, requested_address, exec);
+  char* base = os::reserve_memory_special(size, alignment, page_size, requested_address, exec);
   if (base != NULL) {
     if (failed_to_reserve_as_requested(base, requested_address, size, true)) {
       // OS ignored requested address. Try different address.
