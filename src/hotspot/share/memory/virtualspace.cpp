@@ -41,7 +41,7 @@
 
 // Dummy constructor
 ReservedSpace::ReservedSpace() : _base(NULL), _size(0), _noaccess_prefix(0),
-    _alignment(0), _special(false), _fd_for_heap(-1), _executable(false) {
+    _alignment(0), _page_size(0), _special(false), _fd_for_heap(-1), _executable(false) {
 }
 
 ReservedSpace::ReservedSpace(size_t size) : _fd_for_heap(-1) {
@@ -77,13 +77,14 @@ ReservedSpace::ReservedSpace(size_t size, size_t alignment,
   initialize(size, alignment, page_size, requested_address, false);
 }
 
-ReservedSpace::ReservedSpace(char* base, size_t size, size_t alignment,
+ReservedSpace::ReservedSpace(char* base, size_t size, size_t alignment, size_t page_size,
                              bool special, bool executable) : _fd_for_heap(-1) {
   assert((size % os::vm_allocation_granularity()) == 0,
          "size not allocation aligned");
   _base = base;
   _size = size;
   _alignment = alignment;
+  _page_size = page_size;
   _noaccess_prefix = 0;
   _special = special;
   _executable = executable;
@@ -254,10 +255,12 @@ void ReservedSpace::clear_members() {
   _special = false;
   _executable = false;
   _alignment = 0;
+  _page_size = 0;
   _noaccess_prefix = 0;
 }
 void ReservedSpace::set_members(size_t size,
                                 size_t alignment,
+                                size_t page_size,
                                 char* base_address,
                                 bool special,
                                 bool executable) {
@@ -266,6 +269,7 @@ void ReservedSpace::set_members(size_t size,
   _special = special;
   _executable = executable;
   _alignment = alignment;
+  _page_size = page_size;
 }
 
 void ReservedSpace::initialize(size_t size,
@@ -292,7 +296,7 @@ void ReservedSpace::initialize(size_t size,
     // large pages are allocated is up to the filesystem of the backing file.
     // So UseLargePages is not taken into account for this reservation.
     char* base = reserve_memory(requested_address, size, alignment, _fd_for_heap, executable);
-    set_members(size, alignment, base, true, executable);
+    set_members(size, alignment, os::vm_page_size(), base, true, executable);
     return;
   } else if (use_explicit_large_pages(page_size)) {
     // System can't commit large pages i.e. use transparent huge pages and
@@ -308,7 +312,7 @@ void ReservedSpace::initialize(size_t size,
       char* base = reserve_memory_special(requested_address, size, alignment, try_page_size, executable);
       if (base != NULL) {
         // Successful reservation using large pages.
-        set_members(size, alignment, base, true, executable);
+        set_members(size, alignment, try_page_size, base, true, executable);
         return;
       }
       try_page_size = os::page_sizes().next_smaller(try_page_size);
@@ -319,13 +323,13 @@ void ReservedSpace::initialize(size_t size,
   char* base = reserve_memory(requested_address, size, alignment, -1, executable);
   if (base != NULL) {
     // Successful mapping.
-    set_members(size, alignment, base, false, executable);
+    set_members(size, alignment, os::vm_page_size(), base, false, executable);
   }
 }
 
 ReservedSpace ReservedSpace::first_part(size_t partition_size, size_t alignment) {
   assert(partition_size <= size(), "partition failed");
-  ReservedSpace result(base(), partition_size, alignment, special(), executable());
+  ReservedSpace result(base(), partition_size, alignment, page_size(), special(), executable());
   return result;
 }
 
@@ -334,7 +338,7 @@ ReservedSpace
 ReservedSpace::last_part(size_t partition_size, size_t alignment) {
   assert(partition_size <= size(), "partition failed");
   ReservedSpace result(base() + partition_size, size() - partition_size,
-                       alignment, special(), executable());
+                       alignment, page_size(), special(), executable());
   return result;
 }
 
@@ -354,22 +358,7 @@ size_t ReservedSpace::allocation_align_size_up(size_t size) {
 }
 
 size_t ReservedSpace::actual_reserved_page_size(const ReservedSpace& rs) {
-  size_t page_size = os::vm_page_size();
-  if (UseLargePages) {
-    // There are two ways to manage large page memory.
-    // 1. OS supports committing large page memory.
-    // 2. OS doesn't support committing large page memory so ReservedSpace manages it.
-    //    And ReservedSpace calls it 'special'. If we failed to set 'special',
-    //    we reserved memory without large page.
-    if (os::can_commit_large_page_memory() || rs.special()) {
-      // An alignment at ReservedSpace comes from preferred page size or
-      // heap alignment, and if the alignment came from heap alignment, it could be
-      // larger than large pages size. So need to cap with the large page size.
-      page_size = MIN2(rs.alignment(), os::large_page_size());
-    }
-  }
-
-  return page_size;
+  return rs.page_size();
 }
 
 void ReservedSpace::release() {

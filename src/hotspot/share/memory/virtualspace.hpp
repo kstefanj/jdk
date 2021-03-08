@@ -39,19 +39,21 @@ class ReservedSpace {
   size_t _size;
   size_t _noaccess_prefix;
   size_t _alignment;
+  size_t _page_size;
   bool   _special;
   int    _fd_for_heap;
  private:
   bool   _executable;
 
   // ReservedSpace
-  ReservedSpace(char* base, size_t size, size_t alignment, bool special,
-                bool executable);
+  ReservedSpace(char* base, size_t size, size_t alignment, size_t page_size,
+                bool special, bool executable);
  protected:
   void assert_sizing(size_t size, size_t alignment) NOT_DEBUG_RETURN;
   void clear_members();
   void set_members(size_t size,
                    size_t alignment,
+                   size_t page_size,
                    char* base_address,
                    bool special,
                    bool executable);
@@ -80,6 +82,7 @@ class ReservedSpace {
   size_t size()            const { return _size;      }
   char*  end()             const { return _base + _size; }
   size_t alignment()       const { return _alignment; }
+  size_t page_size()       const { return _page_size; }
   bool   special()         const { return _special;   }
   bool   executable()      const { return _executable;   }
   size_t noaccess_prefix() const { return _noaccess_prefix;   }
