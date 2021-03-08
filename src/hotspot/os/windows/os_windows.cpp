@@ -5815,7 +5815,7 @@ void TestReserveMemorySpecial_test() {
 
   // do an allocation at an address selected by the OS to get a good one.
   const size_t large_allocation_size = os::large_page_size() * 4;
-  char* result = os::reserve_memory_special(large_allocation_size, os::large_page_size(), NULL, false);
+  char* result = os::reserve_memory_special(large_allocation_size, os::large_page_size(), os::large_page_size(), NULL, false);
   if (result == NULL) {
   } else {
     os::release_memory_special(result, large_allocation_size);
@@ -5824,7 +5824,7 @@ void TestReserveMemorySpecial_test() {
     // we managed to get it once.
     const size_t expected_allocation_size = os::large_page_size();
     char* expected_location = result + os::large_page_size();
-    char* actual_location = os::reserve_memory_special(expected_allocation_size, os::large_page_size(), expected_location, false);
+    char* actual_location = os::reserve_memory_special(expected_allocation_size, os::large_page_size(), os::large_page_size(), expected_location, false);
     if (actual_location == NULL) {
     } else {
       // release memory
