@@ -61,6 +61,7 @@ public:
   void initialize_heap_sizes();
 
   static size_t compute_heap_alignment();
+  static size_t max_page_for_heap();
 };
 
 #endif // SHARE_GC_SHARED_GCARGUMENTS_HPP

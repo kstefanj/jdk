@@ -38,7 +38,7 @@
 
 static size_t calculate_heap_alignment(size_t space_alignment) {
   size_t card_table_alignment = CardTableRS::ct_max_alignment_constraint();
-  size_t page_size = UseLargePages ? os::large_page_size() : os::vm_page_size();
+  size_t page_size = GCArguments::max_page_for_heap();
   return MAX3(card_table_alignment, space_alignment, page_size);
 }
 

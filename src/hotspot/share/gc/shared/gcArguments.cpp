@@ -66,6 +66,14 @@ void GCArguments::initialize_heap_sizes() {
   initialize_size_info();
 }
 
+size_t GCArguments::max_page_for_heap() {
+  size_t page_size = os::vm_page_size();
+  if (UseLargePages) {
+    page_size = os::page_size_for_region_aligned(MaxHeapSize, 1);
+  }
+  return page_size;
+}
+
 size_t GCArguments::compute_heap_alignment() {
   // The card marking array and the offset arrays for old generations are
   // committed in os pages as well. Make sure they are entirely full (to
@@ -76,9 +84,10 @@ size_t GCArguments::compute_heap_alignment() {
   size_t alignment = CardTableRS::ct_max_alignment_constraint();
 
   if (UseLargePages) {
-      // In presence of large pages we have to make sure that our
-      // alignment is large page aware.
-      alignment = lcm(os::large_page_size(), alignment);
+    // In presence of large pages we have to make sure that our
+    // alignment is large page aware.
+    size_t large_page_size = GCArguments::max_page_for_heap();
+    alignment = lcm(large_page_size, alignment);
   }
 
   return alignment;

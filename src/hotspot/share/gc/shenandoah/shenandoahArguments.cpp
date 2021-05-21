@@ -182,7 +182,7 @@ void ShenandoahArguments::initialize_alignments() {
   // This is expected by our algorithm for ShenandoahHeap::heap_region_containing().
   size_t align = ShenandoahHeapRegion::region_size_bytes();
   if (UseLargePages) {
-    align = MAX2(align, os::large_page_size());
+    align = GCArguments::max_page_for_heap();
   }
   SpaceAlignment = align;
   HeapAlignment = align;

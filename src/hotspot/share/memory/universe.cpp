@@ -817,8 +817,9 @@ ReservedHeapSpace Universe::reserve_heap(size_t heap_size, size_t alignment) {
       "heap size is too big for compressed oops");
 
   size_t page_size = os::vm_page_size();
-  if (UseLargePages && is_aligned(alignment, os::large_page_size())) {
-    page_size = os::large_page_size();
+  size_t large_page_size = GCArguments::max_page_for_heap();
+  if (UseLargePages && is_aligned(alignment, large_page_size)) {
+    page_size = large_page_size;
   } else {
     // Parallel is the only collector that might opt out of using large pages
     // for the heap.

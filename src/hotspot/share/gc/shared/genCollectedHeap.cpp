@@ -157,7 +157,7 @@ void GenCollectedHeap::initialize_size_policy(size_t init_eden_size,
 
 ReservedHeapSpace GenCollectedHeap::allocate(size_t alignment) {
   // Now figure out the total size.
-  const size_t pageSize = UseLargePages ? os::large_page_size() : os::vm_page_size();
+  const size_t pageSize = GCArguments::max_page_for_heap();
   assert(alignment % pageSize == 0, "Must be");
 
   // Check for overflow.
