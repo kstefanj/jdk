@@ -165,6 +165,9 @@ public:
   inline HeapWord* allocate_no_bot_updates(size_t word_size);
   inline HeapWord* allocate_no_bot_updates(size_t min_word_size, size_t desired_word_size, size_t* actual_size);
 
+  inline void update_bot(HeapWord** threshold, HeapWord* obj_start, HeapWord* obj_end);
+  inline HeapWord* bot_threshold_for_addr(const void* addr);
+
   // Full GC support methods.
 
   void initialize_bot_threshold();
@@ -198,10 +201,6 @@ public:
 
   void update_bot() {
     _bot_part.update();
-  }
-
-  G1BlockOffsetTablePart* bot() {
-    return &_bot_part;
   }
 
 private:

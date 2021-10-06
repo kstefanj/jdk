@@ -156,7 +156,10 @@ private:
   G1CollectedHeap* _g1h;
   G1Allocator* _allocator;
 
+  // Members needed to keep the bot in sync for old gen promotions.
+  HeapRegion* _old_plab_region;
   HeapWord* _old_plab_bot_threshold;
+  bool _old_is_direct;
 
   PLAB** _alloc_buffers[G1HeapRegionAttr::Num];
 

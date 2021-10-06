@@ -25,7 +25,6 @@
 #include "precompiled.hpp"
 #include "gc/g1/g1Allocator.inline.hpp"
 #include "gc/g1/g1AllocRegion.inline.hpp"
-#include "gc/g1/g1BlockOffsetTable.inline.hpp"
 #include "gc/g1/g1EvacInfo.hpp"
 #include "gc/g1/g1EvacStats.inline.hpp"
 #include "gc/g1/g1CollectedHeap.inline.hpp"
@@ -295,7 +294,10 @@ HeapWord* G1Allocator::old_attempt_allocation(size_t min_word_size,
 
 G1PLABAllocator::G1PLABAllocator(G1Allocator* allocator) :
   _g1h(G1CollectedHeap::heap()),
-  _allocator(allocator) {
+  _allocator(allocator),
+  _old_plab_region(nullptr),
+  _old_plab_bot_threshold(nullptr),
+  _old_is_direct(false) {
   for (region_type_t state = 0; state < G1HeapRegionAttr::Num; state++) {
     _direct_allocated[state] = 0;
     uint length = alloc_buffers_length(state);
@@ -347,10 +349,12 @@ HeapWord* G1PLABAllocator::allocate_direct_or_new_plab(G1HeapRegionAttr dest,
            required_in_plab, plab_word_size, actual_plab_size, p2i(buf));
 
     if (buf != NULL) {
-      // Update threshold for old plabs
+      // New PLAB, set the region and bot threshold.
       if (dest.is_old()){
-        HeapRegion* hr = _g1h->heap_region_containing(buf);
-        _old_plab_bot_threshold = hr->bot()->threshold_for_addr(buf);
+        _old_plab_region = _g1h->heap_region_containing(buf);
+        _old_plab_bot_threshold = _old_plab_region->bot_threshold_for_addr(buf);
+        assert(_old_plab_bot_threshold >= buf, "threshold must be at or after PLAB start. "
+               PTR_FORMAT " >= " PTR_FORMAT, p2i(_old_plab_bot_threshold), p2i(buf));
       }
       alloc_buf->set_buf(buf, actual_plab_size);
 
@@ -366,14 +370,18 @@ HeapWord* G1PLABAllocator::allocate_direct_or_new_plab(G1HeapRegionAttr dest,
   // Try direct allocation.
   HeapWord* result = _allocator->par_allocate_during_gc(dest, word_sz, node_index);
   if (result != NULL) {
-    log_info(remset)("DIRA   os " PTR_FORMAT " oe " PTR_FORMAT, p2i(result), p2i(result+word_sz));
     _direct_allocated[dest.type()] += word_sz;
+    if (dest.is_old()) {
+      _old_is_direct = true;
+    }
   }
   return result;
 }
 
 void G1PLABAllocator::undo_allocation(G1HeapRegionAttr dest, HeapWord* obj, size_t word_sz, uint node_index) {
   alloc_buffer(dest, node_index)->undo_allocation(obj, word_sz);
+  // can be cleared regardless if the allocation was old or not.
+  _old_is_direct = false;
 }
 
 void G1PLABAllocator::flush_and_retire_stats() {

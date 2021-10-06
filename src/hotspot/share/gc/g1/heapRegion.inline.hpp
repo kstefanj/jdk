@@ -270,6 +270,15 @@ inline HeapWord* HeapRegion::allocate_no_bot_updates(size_t min_word_size,
   return allocate_impl(min_word_size, desired_word_size, actual_word_size);
 }
 
+inline void HeapRegion::update_bot(HeapWord** threshold, HeapWord* obj_start, HeapWord* obj_end) {
+  assert(is_old(), "should only do BOT updates for old regions");
+  _bot_part.alloc_block_work(threshold, obj_start, obj_end);
+}
+
+inline HeapWord* HeapRegion::bot_threshold_for_addr(const void* addr) {
+  return _bot_part.threshold_for_addr(addr);
+}
+
 inline void HeapRegion::note_start_of_marking() {
   _next_marked_bytes = 0;
   _next_top_at_mark_start = top();

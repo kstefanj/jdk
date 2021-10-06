@@ -108,6 +108,7 @@ public:
 
 class G1BlockOffsetTablePart {
   friend class G1BlockOffsetTable;
+  friend class HeapRegion;
   friend class VMStructs;
 private:
   // allocation boundary at which offset array must be updated
@@ -167,7 +168,6 @@ private:
   // starting at "*threshold_", and for any other indices crossed by the
   // block.  Updates "*threshold_" to correspond to the first index after
   // the block end.
-public:
   void alloc_block_work(HeapWord** threshold_,
                         HeapWord* blk_start,
                         HeapWord* blk_end);
