@@ -29,7 +29,18 @@
 
 #include "gc/g1/heapRegion.hpp"
 #include "gc/shared/memset_with_concurrent_readers.hpp"
+#include "logging/log.hpp"
 #include "runtime/atomic.hpp"
+
+inline HeapWord* G1BlockOffsetTablePart::threshold_for_addr(const void* addr) {
+  assert(addr >= _hr->bottom() && addr < _hr->top(), "invalid address");
+  size_t index = _bot->index_for(addr);
+  HeapWord* q = _bot->address_for_index(index);
+  HeapWord* threshold = q + BOTConstants::N_words;
+  log_info(remset)("PLAB addr: " PTR_FORMAT " PLAT t: " PTR_FORMAT " BOT t: " PTR_FORMAT,
+                   p2i(addr), p2i(threshold), p2i(_next_offset_threshold));
+  return threshold;
+}
 
 inline HeapWord* G1BlockOffsetTablePart::block_start(const void* addr) {
   assert(addr >= _hr->bottom() && addr < _hr->top(), "invalid address");

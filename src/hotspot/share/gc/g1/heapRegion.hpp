@@ -200,6 +200,10 @@ public:
     _bot_part.update();
   }
 
+  G1BlockOffsetTablePart* bot() {
+    return &_bot_part;
+  }
+
 private:
   // The remembered set for this region.
   HeapRegionRemSet* _rem_set;

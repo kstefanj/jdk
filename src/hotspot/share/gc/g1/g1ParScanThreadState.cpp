@@ -493,6 +493,9 @@ oop G1ParScanThreadState::do_copy_to_survivor_space(G1HeapRegionAttr const regio
         obj->incr_age();
       }
       _age_table.add(age, word_sz);
+    } else {
+      assert(dest_attr.is_old(), "Only update bot for old");
+      _plab_allocator->update_bot(obj_ptr, word_sz);
     }
 
     // Most objects are not arrays, so do one array check rather than

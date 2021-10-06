@@ -29,6 +29,7 @@
 
 #include "gc/g1/g1AllocRegion.inline.hpp"
 #include "gc/shared/plab.inline.hpp"
+#include "logging/log.hpp"
 #include "memory/universe.hpp"
 
 inline uint G1Allocator::current_node_index() const {
@@ -131,6 +132,26 @@ inline HeapWord* G1PLABAllocator::allocate(G1HeapRegionAttr dest,
     return obj;
   }
   return allocate_direct_or_new_plab(dest, word_sz, refill_failed, node_index);
+}
+
+inline void G1PLABAllocator::update_bot(HeapWord* obj_start, size_t obj_size) {
+  HeapWord* obj_end = obj_start + obj_size;
+  if (obj_start > _old_plab_bot_threshold) {
+    // Direct allocation outside tlab, no bot update for this
+    return;
+  } else if (obj_end > _old_plab_bot_threshold) {
+    // This object allocation crossed the threshold
+    assert(_g1h->heap_region_containing(obj_end) == _g1h->heap_region_containing(_old_plab_bot_threshold), "inva");
+    HeapRegion* hr = _g1h->heap_region_containing(obj_end);
+    log_info(remset)("UPDT   plab bot os " PTR_FORMAT " oe " PTR_FORMAT " ot " PTR_FORMAT,
+                     p2i(obj_start), p2i(obj_end), p2i(_old_plab_bot_threshold));
+    hr->bot()->alloc_block_work(&_old_plab_bot_threshold, obj_start, obj_end);
+    log_info(remset)("DONE   plab bot os " PTR_FORMAT " oe " PTR_FORMAT " nt " PTR_FORMAT,
+                     p2i(obj_start), p2i(obj_end), p2i(_old_plab_bot_threshold));
+  } else {
+    log_info(remset)("NOUP   plab bot os " PTR_FORMAT " oe " PTR_FORMAT " ot " PTR_FORMAT,
+                     p2i(obj_start), p2i(obj_end), p2i(_old_plab_bot_threshold));
+  }
 }
 
 #endif // SHARE_GC_G1_G1ALLOCATOR_INLINE_HPP

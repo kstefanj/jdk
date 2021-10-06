@@ -167,6 +167,7 @@ private:
   // starting at "*threshold_", and for any other indices crossed by the
   // block.  Updates "*threshold_" to correspond to the first index after
   // the block end.
+public:
   void alloc_block_work(HeapWord** threshold_,
                         HeapWord* blk_start,
                         HeapWord* blk_end);
@@ -180,6 +181,8 @@ public:
   void update();
 
   void verify() const;
+
+  inline HeapWord* threshold_for_addr(const void* addr);
 
   // Returns the address of the start of the block containing "addr", or
   // else "null" if it is covered by no block.  (May have side effects,

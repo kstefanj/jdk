@@ -156,6 +156,8 @@ private:
   G1CollectedHeap* _g1h;
   G1Allocator* _allocator;
 
+  HeapWord* _old_plab_bot_threshold;
+
   PLAB** _alloc_buffers[G1HeapRegionAttr::Num];
 
   // Number of words allocated directly (not counting PLAB allocation).
@@ -199,6 +201,8 @@ public:
                             uint node_index);
 
   void undo_allocation(G1HeapRegionAttr dest, HeapWord* obj, size_t word_sz, uint node_index);
+
+  void update_bot(HeapWord* obj_start, size_t obj_size);
 };
 
 // G1ArchiveAllocator is used to allocate memory in archive

@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "gc/g1/g1Allocator.inline.hpp"
 #include "gc/g1/g1AllocRegion.inline.hpp"
+#include "gc/g1/g1BlockOffsetTable.inline.hpp"
 #include "gc/g1/g1EvacInfo.hpp"
 #include "gc/g1/g1EvacStats.inline.hpp"
 #include "gc/g1/g1CollectedHeap.inline.hpp"
@@ -346,6 +347,11 @@ HeapWord* G1PLABAllocator::allocate_direct_or_new_plab(G1HeapRegionAttr dest,
            required_in_plab, plab_word_size, actual_plab_size, p2i(buf));
 
     if (buf != NULL) {
+      // Update threshold for old plabs
+      if (dest.is_old()){
+        HeapRegion* hr = _g1h->heap_region_containing(buf);
+        _old_plab_bot_threshold = hr->bot()->threshold_for_addr(buf);
+      }
       alloc_buf->set_buf(buf, actual_plab_size);
 
       HeapWord* const obj = alloc_buf->allocate(word_sz);
@@ -360,6 +366,7 @@ HeapWord* G1PLABAllocator::allocate_direct_or_new_plab(G1HeapRegionAttr dest,
   // Try direct allocation.
   HeapWord* result = _allocator->par_allocate_during_gc(dest, word_sz, node_index);
   if (result != NULL) {
+    log_info(remset)("DIRA   os " PTR_FORMAT " oe " PTR_FORMAT, p2i(result), p2i(result+word_sz));
     _direct_allocated[dest.type()] += word_sz;
   }
   return result;
