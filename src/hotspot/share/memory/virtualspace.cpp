@@ -235,11 +235,20 @@ void ReservedSpace::reserve(size_t size,
     // the caller requested large pages. To satisfy this request we use
     // explicit large pages and these have to be committed up front to ensure
     // no reservations are lost.
+    size_t used_page_size = page_size;
+    char* base = NULL;
 
-    char* base = reserve_memory_special(requested_address, size, alignment, page_size, executable);
+    do {
+      base = reserve_memory_special(requested_address, size, alignment, used_page_size, executable);
+      if (base != NULL) {
+        break;
+      }
+      used_page_size = os::page_sizes().next_smaller(used_page_size);
+    } while (used_page_size > (size_t) os::vm_page_size());
+
     if (base != NULL) {
       // Successful reservation using large pages.
-      initialize_members(base, size, alignment, page_size, true, executable);
+      initialize_members(base, size, alignment, used_page_size, true, executable);
       return;
     }
     // Failed to reserve explicit large pages, fall back to normal reservation.
