@@ -139,6 +139,19 @@ static bool large_pages_requested() {
          (!FLAG_IS_DEFAULT(UseLargePages) || !FLAG_IS_DEFAULT(LargePageSizeInBytes));
 }
 
+static void log_on_large_pages_failure(char* req_addr, size_t bytes) {
+  if (large_pages_requested()) {
+    // Compressed oops logging.
+    log_debug(gc, heap, coops)("Reserve regular memory without large pages");
+    // JVM style warning that we did not succeed in using large pages.
+    char msg[128];
+    jio_snprintf(msg, sizeof(msg), "Failed to reserve and commit memory using large pages. "
+                                   "req_addr: " PTR_FORMAT " bytes: " SIZE_FORMAT,
+                                   req_addr, bytes);
+    warning("%s", msg);
+  }
+}
+
 static char* reserve_memory(char* requested_address, const size_t size,
                             const size_t alignment, int fd, bool exec) {
   char* base;
@@ -183,10 +196,6 @@ static char* reserve_memory_special(char* requested_address, const size_t size,
            "reserve_memory_special() returned an unaligned address, base: " PTR_FORMAT
            " alignment: " SIZE_FORMAT_HEX,
            p2i(base), alignment);
-  } else {
-    if (large_pages_requested()) {
-      log_debug(gc, heap, coops)("Reserve regular memory without large pages");
-    }
   }
   return base;
 }
@@ -251,7 +260,9 @@ void ReservedSpace::reserve(size_t size,
       initialize_members(base, size, alignment, used_page_size, true, executable);
       return;
     }
-    // Failed to reserve explicit large pages, fall back to normal reservation.
+    // Failed to reserve explicit large pages, do proper logging.
+    log_on_large_pages_failure(requested_address, size);
+    // Now fall back to normal reservation.
     page_size = os::vm_page_size();
   }
 
