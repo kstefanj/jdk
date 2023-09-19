@@ -35,7 +35,8 @@
 ZVirtualMemoryManager::ZVirtualMemoryManager(size_t max_capacity)
   : _manager(),
     _reserved(0),
-    _initialized(false) {
+    _initialized(false),
+    _last_fragmentation(0.0) {
 
   assert(max_capacity <= ZAddressOffsetMax, "Too large max_capacity");
 
@@ -232,4 +233,15 @@ ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool force_low_address)
 
 void ZVirtualMemoryManager::free(const ZVirtualMemory& vmem) {
   _manager.free(vmem.start(), vmem.size());
+}
+
+void ZVirtualMemoryManager::log_fragmentation() {
+  if (log_is_enabled(Info, gc, heap)) {
+    double fragmentation = _manager.fragmentation();
+    if (fragmentation < _last_fragmentation - _fragmentation_report_diff ||
+        fragmentation > _last_fragmentation + _fragmentation_report_diff) {
+      log_info(gc, heap)("Virtual Address Space fragmentation: %.0f%%", fragmentation * 100);
+      _last_fragmentation = fragmentation;
+    }
+  }
 }

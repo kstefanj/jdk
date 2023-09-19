@@ -26,6 +26,8 @@
 #include "gc/z/zLock.inline.hpp"
 #include "gc/z/zMemory.inline.hpp"
 
+#include <math.h>
+
 ZMemory* ZMemoryManager::create(zoffset start, size_t size) {
   ZMemory* const area = new ZMemory(start, size);
   if (_callbacks._create != nullptr) {
@@ -221,4 +223,22 @@ void ZMemoryManager::free(zoffset start, size_t size) {
     ZMemory* const new_area = create(start, size);
     _freelist.insert_last(new_area);
   }
+}
+
+double ZMemoryManager::fragmentation() const {
+  ZLocker<ZLock> locker(&_lock);
+
+  size_t total_free = 0;
+  size_t total_square = 0;
+
+  ZListIterator<ZMemory> iter(&_freelist);
+  for (ZMemory* area; iter.next(&area);) {
+    size_t size = area->size() / M;
+    total_free += size;
+    total_square += size * size;
+  }
+
+  double fragmentation = sqrt(total_square) / (double) total_free;
+
+  return 1.0 - fragmentation;
 }

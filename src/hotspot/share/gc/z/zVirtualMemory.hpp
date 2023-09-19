@@ -55,6 +55,11 @@ private:
   ZMemoryManager _manager;
   size_t         _reserved;
   bool           _initialized;
+  double         _last_fragmentation;
+
+  // Log new fragmentation level only if difference compared to the
+  // last value is large enough.
+  static constexpr double _fragmentation_report_diff = 0.05;
 
   // Platform specific implementation
   void pd_initialize_before_reserve();
@@ -80,6 +85,7 @@ public:
 
   ZVirtualMemory alloc(size_t size, bool force_low_address);
   void free(const ZVirtualMemory& vmem);
+  void log_fragmentation();
 };
 
 #endif // SHARE_GC_Z_ZVIRTUALMEMORY_HPP

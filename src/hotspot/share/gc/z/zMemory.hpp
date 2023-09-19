@@ -91,6 +91,8 @@ public:
   zoffset alloc_high_address(size_t size);
 
   void free(zoffset start, size_t size);
+
+  double fragmentation() const;
 };
 
 #endif // SHARE_GC_Z_ZMEMORY_HPP
