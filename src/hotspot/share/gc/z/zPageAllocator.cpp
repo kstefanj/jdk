@@ -902,6 +902,9 @@ void ZPageAllocator::free_pages(const ZArray<ZPage*>* pages) {
 
   // Try satisfy stalled allocations
   satisfy_stalled();
+
+  // Log VA fragmentation
+  _virtual.log_fragmentation();
 }
 
 ZPage* ZPageAllocator::prime_pages_inner() {
