@@ -107,6 +107,7 @@ private:
   const uint32_t             _old_seqnum;
   size_t                     _flushed;
   size_t                     _committed;
+  bool                       _out_of_va;
   ZList<ZPage>               _pages;
   ZListNode<ZPageAllocation> _node;
   ZFuture<bool>              _stall_result;
@@ -120,6 +121,7 @@ public:
       _old_seqnum(ZGeneration::old()->seqnum()),
       _flushed(0),
       _committed(0),
+      _out_of_va(false),
       _pages(),
       _node(),
       _stall_result() {}
@@ -158,6 +160,14 @@ public:
 
   void set_committed(size_t committed) {
     _committed = committed;
+  }
+
+  bool out_of_va() const {
+    return _out_of_va;
+  }
+
+  void set_out_of_va(bool out_of_va) {
+    _out_of_va = out_of_va;
   }
 
   bool wait() {
@@ -360,6 +370,10 @@ size_t ZPageAllocator::increase_capacity(size_t size) {
 }
 
 void ZPageAllocator::decrease_capacity(size_t size, bool set_max_capacity) {
+  if (size == 0) {
+    return;
+  }
+
   // Update atomically since we have concurrent readers
   Atomic::sub(&_capacity, size);
 
@@ -582,6 +596,7 @@ ZPage* ZPageAllocator::alloc_page_create(ZPageAllocation* allocation) {
   const ZVirtualMemory vmem = _virtual.alloc(size, allocation->flags().low_address());
   if (vmem.is_null()) {
     log_error(gc)("Out of address space");
+    allocation->set_out_of_va(true);
     return nullptr;
   }
 
@@ -717,6 +732,10 @@ retry:
     // Failed to commit or map. Clean up and retry, in the hope that
     // we can still allocate by flushing the page cache (more aggressively).
     free_pages_alloc_failed(&allocation);
+    if (allocation.out_of_va()) {
+      // Out of address space no idea to retry
+      return nullptr;
+    }
     goto retry;
   }
 
