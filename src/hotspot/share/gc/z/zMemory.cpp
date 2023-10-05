@@ -92,31 +92,29 @@ void ZMemoryManager::register_callbacks(const Callbacks& callbacks) {
 zoffset ZMemoryManager::peek_low_address() const {
   ZLocker<ZLock> locker(&_lock);
 
-  const ZMemory* const area = _freelist.first();
-  if (area != nullptr) {
-    return area->start();
+  if (_freelist.empty()) {
+    // Out of memory
+    return zoffset(UINTPTR_MAX);
   }
 
-  // Out of memory
-  return zoffset(UINTPTR_MAX);
+  return _freelist.front().start();
 }
 
 zoffset ZMemoryManager::alloc_low_address(size_t size) {
   ZLocker<ZLock> locker(&_lock);
 
-  ZListIterator<ZMemory> iter(&_freelist);
-  for (ZMemory* area; iter.next(&area);) {
-    if (area->size() >= size) {
-      if (area->size() == size) {
+  for (ZMemory& area : _freelist) {
+    if (area.size() >= size) {
+      if (area.size() == size) {
         // Exact match, remove area
-        const zoffset start = area->start();
-        _freelist.remove(area);
-        destroy(area);
+        const zoffset start = area.start();
+        _freelist.erase(_freelist.iterator_to(area));
+        destroy(&area);
         return start;
       } else {
         // Larger than requested, shrink area
-        const zoffset start = area->start();
-        shrink_from_front(area, size);
+        const zoffset start = area.start();
+        shrink_from_front(&area, size);
         return start;
       }
     }
@@ -129,44 +127,43 @@ zoffset ZMemoryManager::alloc_low_address(size_t size) {
 zoffset ZMemoryManager::alloc_low_address_at_most(size_t size, size_t* allocated) {
   ZLocker<ZLock> locker(&_lock);
 
-  ZMemory* const area = _freelist.first();
-  if (area != nullptr) {
-    if (area->size() <= size) {
-      // Smaller than or equal to requested, remove area
-      const zoffset start = area->start();
-      *allocated = area->size();
-      _freelist.remove(area);
-      destroy(area);
-      return start;
-    } else {
-      // Larger than requested, shrink area
-      const zoffset start = area->start();
-      shrink_from_front(area, size);
-      *allocated = size;
-      return start;
-    }
+  if (_freelist.empty()) {
+    // Out of memory
+    *allocated = 0;
+    return zoffset(UINTPTR_MAX);
   }
 
-  // Out of memory
-  *allocated = 0;
-  return zoffset(UINTPTR_MAX);
+  ZMemory& area = _freelist.front();
+  if (area.size() <= size) {
+    // Smaller than or equal to requested, remove area
+    const zoffset start = area.start();
+    *allocated = area.size();
+    _freelist.erase(_freelist.iterator_to(area));
+    destroy(&area);
+    return start;
+  } else {
+    // Larger than requested, shrink area
+    const zoffset start = area.start();
+    shrink_from_front(&area, size);
+    *allocated = size;
+    return start;
+  }
 }
 
 zoffset ZMemoryManager::alloc_high_address(size_t size) {
   ZLocker<ZLock> locker(&_lock);
 
-  ZListReverseIterator<ZMemory> iter(&_freelist);
-  for (ZMemory* area; iter.next(&area);) {
+  for (auto area = _freelist.rbegin() ; area != _freelist.rend(); area++) {
     if (area->size() >= size) {
       if (area->size() == size) {
         // Exact match, remove area
         const zoffset start = area->start();
-        _freelist.remove(area);
-        destroy(area);
+        _freelist.erase(area);
+        destroy(&(*area));
         return start;
       } else {
         // Larger than requested, shrink area
-        shrink_from_back(area, size);
+        shrink_from_back(&(*area), size);
         return to_zoffset(area->end());
       }
     }
@@ -182,43 +179,50 @@ void ZMemoryManager::free(zoffset start, size_t size) {
 
   ZLocker<ZLock> locker(&_lock);
 
-  ZListIterator<ZMemory> iter(&_freelist);
-  for (ZMemory* area; iter.next(&area);) {
+  for (auto area = _freelist.begin(); area != _freelist.end(); ++area) {
     if (start < area->start()) {
-      ZMemory* const prev = _freelist.prev(area);
-      if (prev != nullptr && start == prev->end()) {
-        if (end == area->start()) {
-          // Merge with prev and current area
-          grow_from_back(prev, size + area->size());
-          _freelist.remove(area);
-          delete area;
-        } else {
-          // Merge with prev area
-          grow_from_back(prev, size);
+      if (area != _freelist.begin()) {
+        // Can we merge with previous entry
+        ZMemory& prev = *(area--);
+        if (start == prev.end()) {
+          if (end == area->start()) {
+            // Merge with prev and current area
+            grow_from_back(&prev, size + area->size());
+            _freelist.erase(area);
+            delete &(*area);
+          } else {
+            // Merge with prev area
+            grow_from_back(&prev, size);
+          }
+          return;
         }
-      } else if (end == area->start()) {
+      }
+
+      if (end == area->start()) {
         // Merge with current area
-        grow_from_front(area, size);
+        grow_from_front(&(*area), size);
+        return;
       } else {
         // Insert new area before current area
         assert(end < area->start(), "Areas must not overlap");
         ZMemory* const new_area = create(start, size);
-        _freelist.insert_before(area, new_area);
+        _freelist.insert(area, *new_area);
       }
-
       // Done
       return;
     }
   }
 
   // Insert last
-  ZMemory* const last = _freelist.last();
-  if (last != nullptr && start == last->end()) {
-    // Merge with last area
-    grow_from_back(last, size);
-  } else {
-    // Insert new area last
-    ZMemory* const new_area = create(start, size);
-    _freelist.insert_last(new_area);
+  if (!_freelist.empty()) {
+    ZMemory& last = _freelist.back();
+    if (start == last.end()) {
+      // Merge with last area
+      grow_from_back(&last, size);
+    }
   }
+
+  // Insert new area last
+  ZMemory* const new_area = create(start, size);
+  _freelist.push_back(*new_area);
 }

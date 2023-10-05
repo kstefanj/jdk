@@ -25,20 +25,21 @@
 #define SHARE_GC_Z_ZMEMORY_HPP
 
 #include "gc/z/zAddress.hpp"
-#include "gc/z/zList.hpp"
 #include "gc/z/zLock.hpp"
 #include "memory/allocation.hpp"
+#include "utilities/intrusiveList.hpp"
 
 class ZMemory : public CHeapObj<mtGC> {
-  friend class ZList<ZMemory>;
 
 private:
   zoffset            _start;
   zoffset_end        _end;
-  ZListNode<ZMemory> _node;
+  IntrusiveListEntry _node;
 
 public:
   ZMemory(zoffset start, size_t size);
+
+  using List = IntrusiveList<ZMemory, &ZMemory::_node, true>;
 
   zoffset start() const;
   zoffset_end end() const;
@@ -68,7 +69,7 @@ public:
 
 private:
   mutable ZLock  _lock;
-  ZList<ZMemory> _freelist;
+  ZMemory::List  _freelist;
   Callbacks      _callbacks;
 
   ZMemory* create(zoffset start, size_t size);
