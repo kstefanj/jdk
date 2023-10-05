@@ -52,68 +52,38 @@ inline void HeapRegionSetBase::remove(HeapRegion* hr) {
 }
 
 inline void FreeRegionList::add_to_tail(HeapRegion* region_to_add) {
-  assert_free_region_list((length() == 0 && _head == nullptr && _tail == nullptr && _last == nullptr) ||
-                          (length() >  0 && _head != nullptr && _tail != nullptr && _tail->hrm_index() < region_to_add->hrm_index()),
+  assert_free_region_list((length() == 0 && _list.empty()) ||
+                          (length() >  0 && !_list.empty() && _list.back().hrm_index() < region_to_add->hrm_index()),
                           "invariant");
   // add() will verify the region and check mt safety.
   add(region_to_add);
+  _list.push_back(*region_to_add);
 
-  if (_head != nullptr) {
-    // Link into list, next is already null, no need to set.
-    region_to_add->set_prev(_tail);
-    _tail->set_next(region_to_add);
-    _tail = region_to_add;
-  } else {
-    // Empty list, this region is now the list.
-    _head = region_to_add;
-    _tail = region_to_add;
-  }
   increase_length(region_to_add->node_index());
 }
 
 inline void FreeRegionList::add_ordered(HeapRegion* hr) {
-  assert_free_region_list((length() == 0 && _head == nullptr && _tail == nullptr && _last == nullptr) ||
-                          (length() >  0 && _head != nullptr && _tail != nullptr),
+  assert_free_region_list((length() == 0 && _list.empty()) ||
+                          (length() >  0 && !_list.empty()),
                           "invariant");
   // add() will verify the region and check mt safety.
   add(hr);
 
   // Now link the region
-  if (_head != nullptr) {
-    HeapRegion* curr;
-
+  if (_list.empty()) {
+    _list.push_back(*hr);
+  } else {
+    auto pos = _list.begin();
     if (_last != nullptr && _last->hrm_index() < hr->hrm_index()) {
-      curr = _last;
-    } else {
-      curr = _head;
+      pos = _list.iterator_to(*_last);
     }
 
     // Find first entry with a Region Index larger than entry to insert.
-    while (curr != nullptr && curr->hrm_index() < hr->hrm_index()) {
-      curr = curr->next();
+    while (pos != _list.end() && pos->hrm_index() < hr->hrm_index()) {
+      ++pos;
     }
 
-    hr->set_next(curr);
-
-    if (curr == nullptr) {
-      // Adding at the end
-      hr->set_prev(_tail);
-      _tail->set_next(hr);
-      _tail = hr;
-    } else if (curr->prev() == nullptr) {
-      // Adding at the beginning
-      hr->set_prev(nullptr);
-      _head = hr;
-      curr->set_prev(hr);
-    } else {
-      hr->set_prev(curr->prev());
-      hr->prev()->set_next(hr);
-      curr->set_prev(hr);
-    }
-  } else {
-    // The list was empty
-    _tail = hr;
-    _head = hr;
+    _list.insert(pos, *hr);
   }
   _last = hr;
 
@@ -121,27 +91,14 @@ inline void FreeRegionList::add_ordered(HeapRegion* hr) {
 }
 
 inline HeapRegion* FreeRegionList::remove_from_head_impl() {
-  HeapRegion* result = _head;
-  _head = result->next();
-  if (_head == nullptr) {
-    _tail = nullptr;
-  } else {
-    _head->set_prev(nullptr);
-  }
-  result->set_next(nullptr);
+  HeapRegion* result = &_list.front();
+  _list.pop_front();
   return result;
 }
 
 inline HeapRegion* FreeRegionList::remove_from_tail_impl() {
-  HeapRegion* result = _tail;
-
-  _tail = result->prev();
-  if (_tail == nullptr) {
-    _head = nullptr;
-  } else {
-    _tail->set_next(nullptr);
-  }
-  result->set_prev(nullptr);
+  HeapRegion* result = &_list.back();
+  _list.pop_back();
   return result;
 }
 
@@ -152,7 +109,7 @@ inline HeapRegion* FreeRegionList::remove_region(bool from_head) {
   if (is_empty()) {
     return nullptr;
   }
-  assert_free_region_list(length() > 0 && _head != nullptr && _tail != nullptr, "invariant");
+  assert_free_region_list(length() > 0, "invariant");
 
   HeapRegion* hr;
 
@@ -179,57 +136,39 @@ inline HeapRegion* FreeRegionList::remove_region_with_node_index(bool from_head,
   assert(UseNUMA, "Invariant");
 
   const uint max_search_depth = G1NUMA::numa()->max_search_depth();
-  HeapRegion* cur;
 
   // Find the region to use, searching from _head or _tail as requested.
   size_t cur_depth = 0;
+  auto dispose = [=](const HeapRegion& hr) {
+    if (_last == &hr) {
+      _last = nullptr;
+    }
+    decrease_length(hr.node_index());
+  };
+
   if (from_head) {
-    for (cur = _head;
-         cur != nullptr && cur_depth < max_search_depth;
-         cur = cur->next(), ++cur_depth) {
-      if (requested_node_index == cur->node_index()) {
-        break;
+    for (auto pos = _list.begin();
+         pos != _list.end() && cur_depth < max_search_depth;
+         ++pos, ++cur_depth) {
+      if (requested_node_index == pos->node_index()) {
+        _list.erase_and_dispose(pos, dispose);
+        remove(&(*pos));
+        return &(*pos);
       }
     }
   } else {
-    for (cur = _tail;
-         cur != nullptr && cur_depth < max_search_depth;
-         cur = cur->prev(), ++cur_depth) {
-      if (requested_node_index == cur->node_index()) {
-        break;
+    for (auto pos = _list.rbegin();
+         pos != _list.rend() && cur_depth < max_search_depth;
+         ++pos, ++cur_depth) {
+      if (requested_node_index == pos->node_index()) {
+        _list.erase_and_dispose(pos, dispose);
+        remove(&(*pos));
+        return &(*pos);
       }
     }
   }
 
-  // Didn't find a region to use.
-  if (cur == nullptr || cur_depth >= max_search_depth) {
-    return nullptr;
-  }
-
-  // Splice the region out of the list.
-  HeapRegion* prev = cur->prev();
-  HeapRegion* next = cur->next();
-  if (prev == nullptr) {
-    _head = next;
-  } else {
-    prev->set_next(next);
-  }
-  if (next == nullptr) {
-    _tail = prev;
-  } else {
-    next->set_prev(prev);
-  }
-  cur->set_prev(nullptr);
-  cur->set_next(nullptr);
-
-  if (_last == cur) {
-    _last = nullptr;
-  }
-
-  remove(cur);
-  decrease_length(cur->node_index());
-
-  return cur;
+  return nullptr;
 }
 
 inline void FreeRegionList::NodeInfo::increase_length(uint node_index) {

@@ -34,6 +34,7 @@
 #include "gc/shared/spaceDecorator.hpp"
 #include "gc/shared/verifyOption.hpp"
 #include "runtime/mutex.hpp"
+#include "utilities/intrusiveList.hpp"
 #include "utilities/macros.hpp"
 
 class G1CardSetConfiguration;
@@ -84,7 +85,11 @@ class HeapRegion : public CHeapObj<mtGC> {
   // into the region was and this is what this keeps track.
   HeapWord* _pre_dummy_top;
 
+  IntrusiveListEntry _list_entry;
+
 public:
+  using FreeList = IntrusiveList<HeapRegion, &HeapRegion::_list_entry, true>;
+
   HeapWord* bottom() const         { return _bottom; }
   HeapWord* end() const            { return _end;    }
 

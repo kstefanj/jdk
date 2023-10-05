@@ -43,7 +43,7 @@
 #define assert_free_region_list(p, message)                          \
   do {                                                               \
     assert((p), "[%s] %s ln: %u hd: " PTR_FORMAT " tl: " PTR_FORMAT, \
-           name(), message, length(), p2i(_head), p2i(_tail));       \
+           name(), message, length(), p2i(&_list.front()), p2i(&_list.back()));       \
   } while (0)
 
 
@@ -139,7 +139,6 @@ class FreeRegionListIterator;
 class G1NUMA;
 
 class FreeRegionList : public HeapRegionSetBase {
-  friend class FreeRegionListIterator;
 
 private:
 
@@ -163,8 +162,7 @@ private:
     void add(NodeInfo* info);
   };
 
-  HeapRegion* _head;
-  HeapRegion* _tail;
+  HeapRegion::FreeList _list;
 
   // _last is used to keep track of where we added an element the last
   // time. It helps to improve performance when adding several ordered items in a row.
@@ -183,8 +181,6 @@ private:
   // Common checks for adding a list.
   void add_list_common_start(FreeRegionList* from_list);
   void add_list_common_end(FreeRegionList* from_list);
-
-  void verify_region_to_remove(HeapRegion* curr, HeapRegion* next) NOT_DEBUG_RETURN;
 protected:
   // See the comment for HeapRegionSetBase::clear()
   virtual void clear();
@@ -193,6 +189,9 @@ public:
   FreeRegionList(const char* name, HeapRegionSetChecker* checker = nullptr);
   ~FreeRegionList();
 
+  HeapRegion::FreeList& list() {
+    return _list;
+  }
   void verify_list();
 
 #ifdef ASSERT
@@ -237,38 +236,6 @@ public:
 
   using HeapRegionSetBase::length;
   uint length(uint node_index) const;
-};
-
-// Iterator class that provides a convenient way to iterate over the
-// regions of a FreeRegionList.
-
-class FreeRegionListIterator : public StackObj {
-private:
-  FreeRegionList* _list;
-  HeapRegion*     _curr;
-
-public:
-  bool more_available() {
-    return _curr != nullptr;
-  }
-
-  HeapRegion* get_next() {
-    assert(more_available(),
-           "get_next() should be called when more regions are available");
-
-    // If we are going to introduce a count in the iterator we should
-    // do the "cycle" check.
-
-    HeapRegion* hr = _curr;
-    _list->verify_region(hr);
-    _curr = hr->next();
-    return hr;
-  }
-
-  FreeRegionListIterator(FreeRegionList* list)
-  : _list(list),
-    _curr(list->_head) {
-  }
 };
 
 #endif // SHARE_GC_G1_HEAPREGIONSET_HPP

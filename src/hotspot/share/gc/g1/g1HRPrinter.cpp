@@ -29,10 +29,8 @@
 
 void G1HRPrinter::cleanup(FreeRegionList* cleanup_list) {
   if (is_active()) {
-    FreeRegionListIterator iter(cleanup_list);
-    while (iter.more_available()) {
-      HeapRegion* hr = iter.get_next();
-      cleanup(hr);
+    for (HeapRegion& hr: cleanup_list->list()) {
+      cleanup(&hr);
     }
   }
 }
