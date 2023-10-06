@@ -88,7 +88,8 @@ class HeapRegion : public CHeapObj<mtGC> {
   IntrusiveListEntry _list_entry;
 
 public:
-  using FreeList = IntrusiveList<HeapRegion, &HeapRegion::_list_entry, true>;
+  static const IntrusiveListEntry& get_entry(const HeapRegion& hr) { return hr._list_entry; }
+  using FreeList = IntrusiveList<HeapRegion, &HeapRegion::get_entry, true>;
 
   HeapWord* bottom() const         { return _bottom; }
   HeapWord* end() const            { return _end;    }
