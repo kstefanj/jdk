@@ -39,7 +39,8 @@ private:
 public:
   ZMemory(zoffset start, size_t size);
 
-  using List = IntrusiveList<ZMemory, &ZMemory::_node, true>;
+  static const IntrusiveListEntry& get_entry(const ZMemory& mem) { return mem._node; }
+  using List = IntrusiveList<ZMemory, &ZMemory::get_entry, true>;
 
   zoffset start() const;
   zoffset_end end() const;
