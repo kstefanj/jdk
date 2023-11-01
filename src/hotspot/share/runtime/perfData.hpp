@@ -870,15 +870,20 @@ class PerfTraceTimedEvent : public PerfTraceTime {
 
 // Class to compute the total CPU time for a set of threads, then update an
 // hsperfdata counter.
+class CollectorCPUTimeCounters;
 class ThreadTotalCPUTimeClosure: public ThreadClosure {
  private:
   jlong _total;
   PerfCounter* _counter;
-  bool _is_gc_threads;
+  CollectorCPUTimeCounters* _gc_counters;
+  bool _update_gc_counters;
 
  public:
-  ThreadTotalCPUTimeClosure(PerfCounter* counter, bool is_gc_threads = false) :
-      _total(0), _counter(counter), _is_gc_threads(is_gc_threads) {}
+  ThreadTotalCPUTimeClosure(PerfCounter* counter) :
+      _total(0), _counter(counter), _gc_counters(nullptr), _update_gc_counters(false) {}
+
+  ThreadTotalCPUTimeClosure(PerfCounter* counter, CollectorCPUTimeCounters* gc_counters) :
+      _total(0), _counter(counter), _gc_counters(gc_counters), _update_gc_counters(true) {}
 
   ~ThreadTotalCPUTimeClosure();
 

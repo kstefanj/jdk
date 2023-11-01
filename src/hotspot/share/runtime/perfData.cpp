@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "gc/shared/collectorCPUTimeCounters.hpp"
 #include "jvm.h"
 #include "logging/log.hpp"
 #include "memory/allocation.inline.hpp"
@@ -538,8 +539,8 @@ PerfTraceTime::~PerfTraceTime() {
 ThreadTotalCPUTimeClosure::~ThreadTotalCPUTimeClosure() {
     jlong net_cpu_time = _total - _counter->get_value();
     _counter->inc(net_cpu_time);
-    if (_is_gc_threads) {
-      Universe::heap()->inc_total_cpu_time(net_cpu_time);
+    if (_update_gc_counters) {
+      _gc_counters->inc_total_cpu_time(net_cpu_time);
     }
 }
 

@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "gc/g1/g1CollectedHeap.hpp"
 #include "gc/g1/g1ServiceThread.hpp"
 #include "logging/log.hpp"
 #include "runtime/mutexLocker.hpp"
@@ -138,7 +139,7 @@ void G1ServiceThread::run_task(G1ServiceTask* task) {
   task->execute();
 
   if (UsePerfData && os::is_thread_cpu_time_supported()) {
-    ThreadTotalCPUTimeClosure tttc(_g1_service_threads_cpu_time, true);
+    ThreadTotalCPUTimeClosure tttc(_g1_service_threads_cpu_time, G1CollectedHeap::heap()->cpu_time_counters());
     tttc.do_thread(task->_service_thread);
   }
 

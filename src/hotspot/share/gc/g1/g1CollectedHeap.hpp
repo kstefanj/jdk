@@ -49,6 +49,7 @@
 #include "gc/g1/heapRegionSet.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/collectedHeap.hpp"
+#include "gc/shared/collectorCPUTimeCounters.hpp"
 #include "gc/shared/gcHeapSummary.hpp"
 #include "gc/shared/plab.hpp"
 #include "gc/shared/softRefPolicy.hpp"
@@ -250,6 +251,8 @@ private:
 
   // Helper for monitoring and management support.
   G1MonitoringSupport* _monitoring_support;
+
+  CollectorCPUTimeCounters* _cpu_time_counters;
 
   uint _num_humongous_objects; // Current amount of (all) humongous objects found in the heap.
   uint _num_humongous_reclaim_candidates; // Number of humongous object eager reclaim candidates.
@@ -560,6 +563,10 @@ public:
   G1MonitoringSupport* monitoring_support() {
     assert(_monitoring_support != nullptr, "should have been initialized");
     return _monitoring_support;
+  }
+
+  CollectorCPUTimeCounters* cpu_time_counters() {
+    return _cpu_time_counters;
   }
 
   void resize_heap_if_necessary();
