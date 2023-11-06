@@ -28,21 +28,32 @@
 #include "runtime/perfData.hpp"
 #include "runtime/perfDataTypes.hpp"
 
+class CollectorCPUTimeGroups : public AllStatic {
+public:
+  enum Name {
+    total,
+    gc_parallel_workers,
+    gc_conc_mark,
+    gc_conc_refine,
+    gc_service,
+    count,
+  };
+
+  static const char* to_string(Name val);
+};
+
 class CollectorCPUTimeCounters: public CHeapObj<mtGC> {
 private:
   // Perf counter to track total CPU time across all threads. Defined here in
   // order to be reused for all collectors.
-  PerfCounter* _total_cpu_time;
+  PerfCounter* _cpu_time_counters[CollectorCPUTimeGroups::count];
 
   // A long which atomically tracks how much CPU time has been spent doing GC
   // since the last time we called `publish_total_cpu_time()`.
   // It is incremented using Atomic::add() to prevent race conditions, and
   // is added to `_total_cpu_time` at the end of GC.
   volatile jlong _total_cpu_time_diff;
-
-  // Perf counter for CPU time of parallel GC threads. Defined here in order to
-  // be reused for all collectors.
-  PerfCounter* _perf_parallel_worker_threads_cpu_time;
+  void create_counter(CounterNS ns, CollectorCPUTimeGroups::Name name);
 
 public:
   CollectorCPUTimeCounters();
@@ -53,9 +64,8 @@ public:
   void inc_total_cpu_time(jlong diff);
   void publish_total_cpu_time();
 
-  PerfCounter* parallel_cpu_time_counter() {
-    return _perf_parallel_worker_threads_cpu_time;
-  }
+  void create_counter(CollectorCPUTimeGroups::Name name);
+  PerfCounter* get_counter(CollectorCPUTimeGroups::Name name);
 };
 
 #endif // SHARE_GC_SHARED_COLLECTORCOUNTERS_HPP

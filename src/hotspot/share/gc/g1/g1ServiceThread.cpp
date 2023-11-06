@@ -42,15 +42,8 @@ void G1SentinelTask::execute() {
 G1ServiceThread::G1ServiceThread() :
     ConcurrentGCThread(),
     _monitor(Mutex::nosafepoint, "G1ServiceThread_lock"),
-    _task_queue(),
-    _g1_service_threads_cpu_time(nullptr) {
+    _task_queue() {
   set_name("G1 Service");
-  if (UsePerfData && os::is_thread_cpu_time_supported()) {
-    EXCEPTION_MARK;
-    _g1_service_threads_cpu_time =
-        PerfDataManager::create_counter(SUN_THREADS_CPUTIME, "gc_service",
-                                        PerfData::U_Ticks, CHECK);
-  }
   create_and_start();
 }
 
@@ -139,7 +132,8 @@ void G1ServiceThread::run_task(G1ServiceTask* task) {
   task->execute();
 
   if (UsePerfData && os::is_thread_cpu_time_supported()) {
-    ThreadTotalCPUTimeClosure tttc(_g1_service_threads_cpu_time, G1CollectedHeap::heap()->cpu_time_counters());
+    CollectorCPUTimeCounters* counters = G1CollectedHeap::heap()->cpu_time_counters();
+    ThreadTotalCPUTimeClosure tttc(counters->get_counter(CollectorCPUTimeGroups::gc_service), counters);
     tttc.do_thread(task->_service_thread);
   }
 

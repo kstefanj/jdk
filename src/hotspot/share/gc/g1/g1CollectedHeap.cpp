@@ -1516,6 +1516,12 @@ jint G1CollectedHeap::initialize() {
 
   evac_failure_injector()->reset();
 
+  // Create CPU time counters
+  _cpu_time_counters->create_counter(CollectorCPUTimeGroups::gc_parallel_workers);
+  _cpu_time_counters->create_counter(CollectorCPUTimeGroups::gc_conc_mark);
+  _cpu_time_counters->create_counter(CollectorCPUTimeGroups::gc_conc_refine);
+  _cpu_time_counters->create_counter(CollectorCPUTimeGroups::gc_service);
+
   G1InitLogger::print();
 
   return JNI_OK;
@@ -2425,7 +2431,7 @@ void G1CollectedHeap::update_parallel_gc_threads_cpu_time() {
   }
   WorkerThreads* worker_threads = workers();
   if (worker_threads != nullptr) {
-    ThreadTotalCPUTimeClosure tttc(_cpu_time_counters->parallel_cpu_time_counter(), cpu_time_counters());
+    ThreadTotalCPUTimeClosure tttc(cpu_time_counters()->get_counter(CollectorCPUTimeGroups::gc_parallel_workers), cpu_time_counters());
     // Currently parallel worker threads never terminate (JDK-8081682), so it is
     // safe for VMThread to read their CPU times. However, if JDK-8087340 is
     // resolved so they terminate, we should rethink if it is still safe.

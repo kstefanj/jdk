@@ -27,20 +27,29 @@
 #include "runtime/atomic.hpp"
 #include "runtime/os.hpp"
 
-CollectorCPUTimeCounters::CollectorCPUTimeCounters() {
-  if (UsePerfData) {
-    EXCEPTION_MARK;
-    if (os::is_thread_cpu_time_supported()) {
-      _total_cpu_time =
-                  PerfDataManager::create_counter(SUN_THREADS, "total_gc_cpu_time",
-                                                  PerfData::U_Ticks, CHECK);
-      _total_cpu_time_diff = 0;
+const char* CollectorCPUTimeGroups::to_string(Name val) {
+  switch (val) {
+    case total:
+      return "total_gc_cpu_time";
+    case gc_parallel_workers:
+      return "gc_parallel_workers";
+    case gc_conc_mark:
+      return "gc_conc_mark";
+    case gc_conc_refine:
+      return "gc_conc_refine";
+    case gc_service:
+      return "gc_service";
+    case count:
+      return "Illegal counter";
+  };
+  ShouldNotReachHere();
+}
 
-      _perf_parallel_worker_threads_cpu_time =
-                  PerfDataManager::create_counter(SUN_THREADS_CPUTIME, "gc_parallel_workers",
-                                                  PerfData::U_Ticks, CHECK);
-    }
-  }
+CollectorCPUTimeCounters::CollectorCPUTimeCounters() :
+    _cpu_time_counters{nullptr},
+    _total_cpu_time_diff(0) {
+
+  create_counter(SUN_THREADS, CollectorCPUTimeGroups::total);
 }
 
 void CollectorCPUTimeCounters::inc_total_cpu_time(jlong diff) {
@@ -57,5 +66,24 @@ void CollectorCPUTimeCounters::publish_total_cpu_time() {
     old_value = fetched_value;
     fetched_value = Atomic::cmpxchg(&_total_cpu_time_diff, old_value, new_value);
   } while (old_value != fetched_value);
-  _total_cpu_time->inc(fetched_value);
+  get_counter(CollectorCPUTimeGroups::total)->inc(fetched_value);
+}
+
+void CollectorCPUTimeCounters::create_counter(CounterNS ns, CollectorCPUTimeGroups::Name name) {
+  if (UsePerfData) {
+    EXCEPTION_MARK;
+    if (os::is_thread_cpu_time_supported()) {
+      _cpu_time_counters[name] =
+                  PerfDataManager::create_counter(ns, CollectorCPUTimeGroups::to_string(name),
+                                                  PerfData::U_Ticks, CHECK);
+    }
+  }
+}
+
+void CollectorCPUTimeCounters::create_counter(CollectorCPUTimeGroups::Name group) {
+  create_counter(SUN_THREADS_CPUTIME, group);
+}
+
+PerfCounter* CollectorCPUTimeCounters::get_counter(CollectorCPUTimeGroups::Name name) {
+  return _cpu_time_counters[name];
 }
