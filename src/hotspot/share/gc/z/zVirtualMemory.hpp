@@ -46,13 +46,27 @@ public:
   ZVirtualMemory split(size_t size);
 };
 
+class ZSizedMemoryManager : public ZMemoryManager {
+private:
+  size_t _size;
+  size_t _capacity;
+  zoffset_end _limit;
+public:
+  ZSizedMemoryManager(size_t capacity);
+  void initialize(zoffset& start, size_t& size);
+  bool is_initialized() const;
+  zoffset_end limit() const;
+};
+
 class ZVirtualMemoryManager {
 private:
   static size_t calculate_min_range(size_t size);
 
-  ZMemoryManager _manager;
-  size_t         _reserved;
-  bool           _initialized;
+  ZMemoryManager      _reserved_segments;
+  ZSizedMemoryManager _small_manager;
+  ZSizedMemoryManager _shared_manager;
+  size_t              _reserved;
+  bool                _initialized;
 
   // Platform specific implementation
   void pd_initialize_before_reserve();
@@ -66,6 +80,9 @@ private:
   size_t reserve_discontiguous(size_t size);
   bool reserve(size_t max_capacity);
 
+  void distribute_reserved_segments();
+  void distribute_reserved_segment(zoffset start, size_t size);
+
   DEBUG_ONLY(size_t force_reserve_discontiguous(size_t size);)
 
 public:
@@ -74,7 +91,7 @@ public:
   bool is_initialized() const;
 
   size_t reserved() const;
-  zoffset lowest_available_address() const;
+  bool is_small_address(zoffset address) const;
 
   ZVirtualMemory alloc(size_t size, bool force_low_address);
   void free(const ZVirtualMemory& vmem);

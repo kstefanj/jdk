@@ -61,8 +61,22 @@ inline size_t ZVirtualMemoryManager::reserved() const {
   return _reserved;
 }
 
-inline zoffset ZVirtualMemoryManager::lowest_available_address() const {
-  return _manager.peek_low_address();
+inline bool ZVirtualMemoryManager::is_small_address(zoffset address) const {
+  return address < _small_manager.limit();
+}
+
+inline ZSizedMemoryManager::ZSizedMemoryManager(size_t capacity)
+  : ZMemoryManager(),
+    _size(0),
+    _capacity(capacity),
+    _limit(zoffset_end(0)) { }
+
+inline zoffset_end ZSizedMemoryManager::limit() const {
+  return _limit;
+}
+
+inline bool ZSizedMemoryManager::is_initialized() const {
+  return _size == _capacity;
 }
 
 #endif // SHARE_GC_Z_ZVIRTUALMEMORY_INLINE_HPP

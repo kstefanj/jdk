@@ -33,7 +33,9 @@
 #include "utilities/debug.hpp"
 
 ZVirtualMemoryManager::ZVirtualMemoryManager(size_t max_capacity)
-  : _manager(),
+  : _reserved_segments(),
+    _small_manager(max_capacity),
+    _shared_manager(max_capacity * (ZVirtualToPhysicalRatio - 1)),
     _reserved(0),
     _initialized(false) {
 
@@ -50,6 +52,9 @@ ZVirtualMemoryManager::ZVirtualMemoryManager(size_t max_capacity)
 
   // Initialize platform specific parts after reserving address space
   pd_initialize_after_reserve();
+
+  // Setup the sized managers from the initial one
+  distribute_reserved_segments();
 
   // Successfully initialized
   _initialized = true;
@@ -136,6 +141,47 @@ size_t ZVirtualMemoryManager::reserve_discontiguous(size_t size) {
   return reserved;
 }
 
+void ZSizedMemoryManager::initialize(zoffset &start, size_t &size) {
+  // Add a segment to the manager
+  size_t to_add = MIN2(size, (_capacity - _size));
+  free(zoffset(start), to_add);
+
+  // Update the state
+  _size += to_add;
+  _limit = zoffset_end(untype(start) + to_add);
+
+  // Update paramters for use by next manager, but only advance start
+  // when there is any size left to handle.
+  size -= to_add;
+  start = size == 0 ? start : (start + to_add);
+}
+
+void ZVirtualMemoryManager::distribute_reserved_segments() {
+  ZMemory* segment = _reserved_segments.remove_first();
+  while (segment != nullptr) {
+    distribute_reserved_segment(segment->start(), segment->size());
+    delete segment;
+    segment = _reserved_segments.remove_first();
+  }
+}
+
+void ZVirtualMemoryManager::distribute_reserved_segment(zoffset start, size_t size) {
+  size_t current_size = size;
+  zoffset current_offset = start;
+  // First initialize the manager used for small page allocations.
+  if (!_small_manager.is_initialized()) {
+    _small_manager.initialize(current_offset, current_size);
+  }
+
+  // If there is more left of this segment, add it to the shared manager
+  // handling medium and large page allocations.
+  if (current_size > 0) {
+    assert(_small_manager.is_initialized(), "Should fully initialize small first");
+    _shared_manager.initialize(current_offset, current_size);
+  }
+}
+
+
 bool ZVirtualMemoryManager::reserve_contiguous(zoffset start, size_t size) {
   assert(is_aligned(size, ZGranuleSize), "Must be granule aligned " SIZE_FORMAT_X, size);
 
@@ -150,8 +196,9 @@ bool ZVirtualMemoryManager::reserve_contiguous(zoffset start, size_t size) {
   // Register address views with native memory tracker
   ZNMT::reserve(addr, size);
 
-  // Make the address range free
-  _manager.free(start, size);
+  // Make the address range free and keep it in the reserved
+  // segment manager for later distribution.
+  _reserved_segments.free(start, size);
 
   return true;
 }
@@ -175,10 +222,12 @@ bool ZVirtualMemoryManager::reserve_contiguous(size_t size) {
 bool ZVirtualMemoryManager::reserve(size_t max_capacity) {
   const size_t limit = MIN2(ZAddressOffsetMax, ZAddressSpaceLimit::heap());
   const size_t size = MIN2(max_capacity * ZVirtualToPhysicalRatio, limit);
+  bool contiguous = true;
 
   auto do_reserve = [&]() {
 #ifdef ASSERT
     if (ZForceDiscontiguousHeapReservations > 0) {
+      contiguous = false;
       return force_reserve_discontiguous(size);
     }
 #endif
@@ -189,12 +238,11 @@ bool ZVirtualMemoryManager::reserve(size_t max_capacity) {
     }
 
     // Fall back to a discontiguous address space
+    contiguous = false;
     return reserve_discontiguous(size);
   };
 
   const size_t reserved = do_reserve();
-
-  const bool contiguous = _manager.free_is_contiguous();
 
   log_info_p(gc, init)("Address Space Type: %s/%s/%s",
                        (contiguous ? "Contiguous" : "Discontiguous"),
@@ -215,12 +263,14 @@ bool ZVirtualMemoryManager::is_initialized() const {
 ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool force_low_address) {
   zoffset start;
 
-  // Small pages are allocated at low addresses, while medium/large pages
-  // are allocated at high addresses (unless forced to be at a low address).
-  if (force_low_address || size <= ZPageSizeSmall) {
-    start = _manager.alloc_low_address(size);
+  // Small pages are allocated in the bottom part of the address space, while
+  // medium/large pages are allocated at higher addresses.
+  if (size <= ZPageSizeSmall || force_low_address) {
+    start = _small_manager.alloc(size);
+    log_trace(gc, heap)("Allocated %zu M from small address space at " PTR_FORMAT, size / M, untype(start));
   } else {
-    start = _manager.alloc_high_address(size);
+    start = _shared_manager.alloc(size);
+    log_trace(gc, heap)("Allocated %zu M from shared address space at " PTR_FORMAT, size / M, untype(start));
   }
 
   if (start == zoffset(UINTPTR_MAX)) {
@@ -231,5 +281,10 @@ ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool force_low_address)
 }
 
 void ZVirtualMemoryManager::free(const ZVirtualMemory& vmem) {
-  _manager.free(vmem.start(), vmem.size());
+  if (vmem.end() <= _small_manager.limit()) {
+    _small_manager.free(vmem.start(), vmem.size());
+  } else {
+    assert(vmem.end() <= _shared_manager.limit(), "Out of range");
+    _shared_manager.free(vmem.start(), vmem.size());
+  }
 }

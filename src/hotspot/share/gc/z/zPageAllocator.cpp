@@ -614,6 +614,7 @@ ZPage* ZPageAllocator::alloc_page_create(ZPageAllocation* allocation) {
     fmem.remove_segments();
 
     // Unmap and destroy page
+    log_trace(gc, heap)("Flush page: " PTR_FORMAT ", " SIZE_FORMAT "M", untype(page->start()), page->size() / M);
     _unmapper->unmap_and_destroy_page(page);
   }
 
@@ -639,13 +640,10 @@ ZPage* ZPageAllocator::alloc_page_create(ZPageAllocation* allocation) {
 }
 
 bool ZPageAllocator::should_defragment(const ZPage* page) const {
-  // A small page can end up at a high address (second half of the address space)
-  // if we've split a larger page or we have a constrained address space. To help
-  // fight address space fragmentation we remap such pages to a lower address, if
-  // a lower address is available.
+  // A small page can end up in the shared address space if we've split a larger page.
+  // To fight address space fragmentation we remap such pages to the small address space.
   return page->type() == ZPageType::small &&
-         page->start() >= to_zoffset(_virtual.reserved() / 2) &&
-         page->start() > _virtual.lowest_available_address();
+         !_virtual.is_small_address(page->start());
 }
 
 bool ZPageAllocator::is_alloc_satisfied(ZPageAllocation* allocation) const {

@@ -179,7 +179,8 @@ void ZVirtualMemoryManager::pd_initialize_before_reserve() {
 }
 
 void ZVirtualMemoryManager::pd_initialize_after_reserve() {
-  _impl->initialize_after_reserve(&_manager);
+  _impl->initialize_after_reserve(&_small_manager);
+  _impl->initialize_after_reserve(&_shared_manager);
 }
 
 bool ZVirtualMemoryManager::pd_reserve(zaddress_unsafe addr, size_t size) {

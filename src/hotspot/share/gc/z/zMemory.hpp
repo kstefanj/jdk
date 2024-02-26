@@ -66,7 +66,7 @@ public:
     Callbacks();
   };
 
-private:
+protected:
   mutable ZLock  _lock;
   ZList<ZMemory> _freelist;
   Callbacks      _callbacks;
@@ -85,12 +85,11 @@ public:
 
   void register_callbacks(const Callbacks& callbacks);
 
-  zoffset peek_low_address() const;
-  zoffset alloc_low_address(size_t size);
-  zoffset alloc_low_address_at_most(size_t size, size_t* allocated);
-  zoffset alloc_high_address(size_t size);
+  zoffset alloc(size_t size);
+  zoffset alloc_at_most(size_t size, size_t* allocated);
 
   void free(zoffset start, size_t size);
+  ZMemory* remove_first();
 };
 
 #endif // SHARE_GC_Z_ZMEMORY_HPP
