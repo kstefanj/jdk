@@ -43,7 +43,6 @@ private:
   ZPage* alloc_large_page(size_t size);
 
   ZPage* alloc_oversized_medium_page(size_t size);
-  ZPage* alloc_oversized_large_page(size_t size);
   ZPage* alloc_oversized_page(size_t size);
 
   bool flush_list_inner(ZPageCacheFlushClosure* cl, ZList<ZPage>* from, ZList<ZPage>* to);

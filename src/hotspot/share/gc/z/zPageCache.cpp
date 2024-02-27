@@ -103,6 +103,7 @@ ZPage* ZPageCache::alloc_medium_page() {
 
 ZPage* ZPageCache::alloc_large_page(size_t size) {
   // Find a page with the right size
+  ZPage* best_fit = nullptr;
   ZListIterator<ZPage> iter(&_large);
   for (ZPage* page; iter.next(&page);) {
     if (size == page->size()) {
@@ -110,10 +111,22 @@ ZPage* ZPageCache::alloc_large_page(size_t size) {
       _large.remove(page);
       ZStatInc(ZCounterPageCacheHitL1);
       return page;
+    } else if (size < page->size()) {
+      // Potential best fit
+      if (best_fit == nullptr) {
+        best_fit = page;
+      } else {
+        best_fit = (best_fit->size() <= page->size()) ? best_fit : page;
+      }
     }
   }
 
-  return nullptr;
+  if (best_fit != nullptr) {
+    ZStatInc(ZCounterPageCacheHitL3);
+    _large.remove(best_fit);
+  }
+
+  return best_fit;
 }
 
 ZPage* ZPageCache::alloc_oversized_medium_page(size_t size) {
@@ -124,22 +137,8 @@ ZPage* ZPageCache::alloc_oversized_medium_page(size_t size) {
   return nullptr;
 }
 
-ZPage* ZPageCache::alloc_oversized_large_page(size_t size) {
-  // Find a page that is large enough
-  ZListIterator<ZPage> iter(&_large);
-  for (ZPage* page; iter.next(&page);) {
-    if (size <= page->size()) {
-      // Page found
-      _large.remove(page);
-      return page;
-    }
-  }
-
-  return nullptr;
-}
-
 ZPage* ZPageCache::alloc_oversized_page(size_t size) {
-  ZPage* page = alloc_oversized_large_page(size);
+  ZPage* page = alloc_large_page(size);
   if (page == nullptr) {
     page = alloc_oversized_medium_page(size);
   }
@@ -163,20 +162,27 @@ ZPage* ZPageCache::alloc_page(ZPageType type, size_t size) {
     page = alloc_large_page(size);
   }
 
+  ZPage* oversized = nullptr;
   if (page == nullptr) {
     // Try allocate potentially oversized page
-    ZPage* const oversized = alloc_oversized_page(size);
-    if (oversized != nullptr) {
-      if (size < oversized->size()) {
-        // Split oversized page
-        page = oversized->split(type, size);
+    oversized = alloc_oversized_page(size);
+  } else if (size < page->size()) {
+    // Got oversized
+    assert(page->type() == ZPageType::large, "Should only happen for large pages");
+    oversized = page;
+  }
 
-        // Cache remainder
-        free_page(oversized);
-      } else {
-        // Re-type correctly sized page
-        page = oversized->retype(type);
-      }
+  // Handle oversized allocation
+  if (oversized != nullptr) {
+    if (size < oversized->size()) {
+      // Split oversized page
+      page = oversized->split(type, size);
+
+      // Cache remainder
+      free_page(oversized);
+    } else {
+      // Re-type correctly sized page
+      page = oversized->retype(type);
     }
   }
 
