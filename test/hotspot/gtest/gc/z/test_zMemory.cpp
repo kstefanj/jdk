@@ -85,12 +85,6 @@ TEST(ZMemory, resize) {
   EXPECT_EQ(mem.size(),            ZGranuleSize * 1);
   mem.grow_from_front(ZGranuleSize);
 
-  mem.shrink_from_back(ZGranuleSize);
-  EXPECT_EQ(mem.start(),   zoffset(ZGranuleSize * 2));
-  EXPECT_EQ(mem.end(), zoffset_end(ZGranuleSize * 3));
-  EXPECT_EQ(mem.size(),            ZGranuleSize * 1);
-  mem.grow_from_back(ZGranuleSize);
-
   mem.grow_from_front(ZGranuleSize);
   EXPECT_EQ(mem.start(),   zoffset(ZGranuleSize * 1));
   EXPECT_EQ(mem.end(), zoffset_end(ZGranuleSize * 4));
@@ -101,5 +95,4 @@ TEST(ZMemory, resize) {
   EXPECT_EQ(mem.start(),   zoffset(ZGranuleSize * 2));
   EXPECT_EQ(mem.end(), zoffset_end(ZGranuleSize * 5));
   EXPECT_EQ(mem.size(),            ZGranuleSize * 3);
-  mem.shrink_from_back(ZGranuleSize);
 }

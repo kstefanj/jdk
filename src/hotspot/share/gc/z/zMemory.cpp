@@ -48,13 +48,6 @@ void ZMemoryManager::shrink_from_front(ZMemory* area, size_t size) {
   area->shrink_from_front(size);
 }
 
-void ZMemoryManager::shrink_from_back(ZMemory* area, size_t size) {
-  if (_callbacks._shrink_from_back != nullptr) {
-    _callbacks._shrink_from_back(area, size);
-  }
-  area->shrink_from_back(size);
-}
-
 void ZMemoryManager::grow_from_front(ZMemory* area, size_t size) {
   if (_callbacks._grow_from_front != nullptr) {
     _callbacks._grow_from_front(area, size);
@@ -73,17 +66,12 @@ ZMemoryManager::Callbacks::Callbacks()
   : _create(nullptr),
     _destroy(nullptr),
     _shrink_from_front(nullptr),
-    _shrink_from_back(nullptr),
     _grow_from_front(nullptr),
     _grow_from_back(nullptr) {}
 
 ZMemoryManager::ZMemoryManager()
   : _freelist(),
     _callbacks() {}
-
-bool ZMemoryManager::free_is_contiguous() const {
-  return _freelist.size() == 1;
-}
 
 void ZMemoryManager::register_callbacks(const Callbacks& callbacks) {
   _callbacks = callbacks;

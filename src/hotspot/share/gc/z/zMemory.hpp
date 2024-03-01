@@ -45,7 +45,6 @@ public:
   size_t size() const;
 
   void shrink_from_front(size_t size);
-  void shrink_from_back(size_t size);
   void grow_from_front(size_t size);
   void grow_from_back(size_t size);
 };
@@ -59,7 +58,6 @@ public:
     CreateDestroyCallback _create;
     CreateDestroyCallback _destroy;
     ResizeCallback        _shrink_from_front;
-    ResizeCallback        _shrink_from_back;
     ResizeCallback        _grow_from_front;
     ResizeCallback        _grow_from_back;
 
@@ -74,14 +72,11 @@ protected:
   ZMemory* create(zoffset start, size_t size);
   void destroy(ZMemory* area);
   void shrink_from_front(ZMemory* area, size_t size);
-  void shrink_from_back(ZMemory* area, size_t size);
   void grow_from_front(ZMemory* area, size_t size);
   void grow_from_back(ZMemory* area, size_t size);
 
 public:
   ZMemoryManager();
-
-  bool free_is_contiguous() const;
 
   void register_callbacks(const Callbacks& callbacks);
 

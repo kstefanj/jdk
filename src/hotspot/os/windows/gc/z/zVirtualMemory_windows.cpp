@@ -28,13 +28,14 @@
 #include "gc/z/zMapper_windows.hpp"
 #include "gc/z/zSyscall_windows.hpp"
 #include "gc/z/zVirtualMemory.inline.hpp"
+#include "logging/log.hpp"
 #include "utilities/align.hpp"
 #include "utilities/debug.hpp"
 
 class ZVirtualMemoryManagerImpl : public CHeapObj<mtGC> {
 public:
   virtual void initialize_before_reserve() {}
-  virtual void initialize_after_reserve(ZMemoryManager* manager) {}
+  virtual void initialize_after_reserve(ZMemoryManager* manager, bool do_alloc) {}
   virtual bool reserve(zaddress_unsafe addr, size_t size) = 0;
   virtual void unreserve(zaddress_unsafe addr, size_t size) = 0;
 };
@@ -82,12 +83,6 @@ private:
       split_into_placeholder_granules(area->start(), size);
     }
 
-    static void shrink_from_back_callback(const ZMemory* area, size_t size) {
-      assert(is_aligned(size, ZGranuleSize), "Must be granule aligned");
-      // Don't try split the last granule - VirtualFree will fail
-      split_into_placeholder_granules(to_zoffset(untype(area->end()) - size), size - ZGranuleSize);
-    }
-
     static void grow_from_front_callback(const ZMemory* area, size_t size) {
       assert(is_aligned(area->size(), ZGranuleSize), "Must be granule aligned");
       coalesce_into_one_placeholder(to_zoffset(untype(area->start()) - size), area->size() + size);
@@ -120,7 +115,6 @@ private:
       callbacks._create = &create_callback;
       callbacks._destroy = &destroy_callback;
       callbacks._shrink_from_front = &shrink_from_front_callback;
-      callbacks._shrink_from_back = &shrink_from_back_callback;
       callbacks._grow_from_front = &grow_from_front_callback;
       callbacks._grow_from_back = &grow_from_back_callback;
 
@@ -128,8 +122,19 @@ private:
     }
   };
 
-  virtual void initialize_after_reserve(ZMemoryManager* manager) {
+  virtual void initialize_after_reserve(ZMemoryManager* manager, bool do_alloc) {
     PlaceholderCallbacks::register_with(manager);
+    if (do_alloc) {
+      // These callbacks rely on VirtualFree and preserving/coalescing placeholders.
+      // This can be problematic when multiple managers are used and when there is a
+      // contigous memory segment spanning the two managers. If so, trying to
+      // coalesce the first placeholder in the second manager relys on knowing the
+      // size and placement of the last one in the first. To avoid this situation, we
+      // waste a granule of address space at the bottom of every manager apart from
+      // the first one.
+      zoffset offset = manager->alloc(ZGranuleSize);
+      log_trace(gc, heap)("Wasted virtual address granule: " PTR_FORMAT, untype(offset));
+    }
   }
 
   virtual bool reserve(zaddress_unsafe addr, size_t size) {
@@ -179,8 +184,8 @@ void ZVirtualMemoryManager::pd_initialize_before_reserve() {
 }
 
 void ZVirtualMemoryManager::pd_initialize_after_reserve() {
-  _impl->initialize_after_reserve(&_small_manager);
-  _impl->initialize_after_reserve(&_shared_manager);
+  _impl->initialize_after_reserve(&_small_manager, false);
+  _impl->initialize_after_reserve(&_shared_manager, true);
 }
 
 bool ZVirtualMemoryManager::pd_reserve(zaddress_unsafe addr, size_t size) {

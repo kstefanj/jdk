@@ -51,11 +51,6 @@ inline void ZMemory::shrink_from_front(size_t size) {
   _start += size;
 }
 
-inline void ZMemory::shrink_from_back(size_t size) {
-  assert(this->size() > size, "Too small");
-  _end -= size;
-}
-
 inline void ZMemory::grow_from_front(size_t size) {
   assert(size_t(start()) >= size, "Too big");
   _start -= size;

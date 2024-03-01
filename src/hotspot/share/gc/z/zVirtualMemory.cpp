@@ -34,8 +34,8 @@
 
 ZVirtualMemoryManager::ZVirtualMemoryManager(size_t max_capacity)
   : _reserved_segments(),
-    _small_manager(max_capacity),
-    _shared_manager(max_capacity * (ZVirtualToPhysicalRatio - 1)),
+    _small_manager(max_capacity * 2),
+    _shared_manager(max_capacity * (ZVirtualToPhysicalRatio - 2)),
     _reserved(0),
     _initialized(false) {
 
@@ -50,11 +50,11 @@ ZVirtualMemoryManager::ZVirtualMemoryManager(size_t max_capacity)
     return;
   }
 
-  // Initialize platform specific parts after reserving address space
-  pd_initialize_after_reserve();
-
   // Setup the sized managers from the initial one
   distribute_reserved_segments();
+
+  // Initialize platform specific parts after reserving address space
+  pd_initialize_after_reserve();
 
   // Successfully initialized
   _initialized = true;
@@ -146,6 +146,7 @@ void ZSizedMemoryManager::initialize(zoffset &start, size_t &size) {
   size_t to_add = MIN2(size, (_capacity - _size));
   free(zoffset(start), to_add);
 
+  log_trace(gc, heap)("Initial free segment: " PTR_FORMAT " %zuM", untype(start), to_add / M);
   // Update the state
   _size += to_add;
   _limit = zoffset_end(untype(start) + to_add);
@@ -267,10 +268,8 @@ ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool force_low_address)
   // medium/large pages are allocated at higher addresses.
   if (size <= ZPageSizeSmall || force_low_address) {
     start = _small_manager.alloc(size);
-    log_trace(gc, heap)("Allocated %zu M from small address space at " PTR_FORMAT, size / M, untype(start));
   } else {
     start = _shared_manager.alloc(size);
-    log_trace(gc, heap)("Allocated %zu M from shared address space at " PTR_FORMAT, size / M, untype(start));
   }
 
   if (start == zoffset(UINTPTR_MAX)) {
