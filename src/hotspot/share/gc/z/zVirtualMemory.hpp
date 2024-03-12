@@ -53,8 +53,8 @@ private:
   zoffset_end _limit;
 public:
   ZSizedMemoryManager(size_t capacity);
-  void initialize(zoffset& start, size_t& size);
-  bool is_initialized() const;
+  void initialize(ZMemoryManager& reserved);
+  bool is_complete() const;
   zoffset_end limit() const;
 };
 
@@ -81,7 +81,6 @@ private:
   bool reserve(size_t max_capacity);
 
   void distribute_reserved_segments();
-  void distribute_reserved_segment(zoffset start, size_t size);
 
   DEBUG_ONLY(size_t force_reserve_discontiguous(size_t size);)
 

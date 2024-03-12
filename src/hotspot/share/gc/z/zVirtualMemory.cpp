@@ -141,47 +141,30 @@ size_t ZVirtualMemoryManager::reserve_discontiguous(size_t size) {
   return reserved;
 }
 
-void ZSizedMemoryManager::initialize(zoffset &start, size_t &size) {
-  // Add a segment to the manager
-  size_t to_add = MIN2(size, (_capacity - _size));
-  free(zoffset(start), to_add);
+void ZSizedMemoryManager::initialize(ZMemoryManager& reserved) {
+  do {
+    size_t size_to_add = _capacity - _size;
+    size_t size_added = 0;
 
-  log_trace(gc, heap)("Initial free segment: " PTR_FORMAT " %zuM", untype(start), to_add / M);
-  // Update the state
-  _size += to_add;
-  _limit = zoffset_end(untype(start) + to_add);
+    // Allocated a segment from the reservation to be added to this manager
+    zoffset start = reserved.alloc_at_most(size_to_add, &size_added);
+    if (start == zoffset(UINTPTR_MAX)) {
+      log_trace(gc, heap)("Limited address range. Manager lack " SIZE_FORMAT "M of address space", size_to_add / M);
+      return;
+    }
 
-  // Update paramters for use by next manager, but only advance start
-  // when there is any size left to handle.
-  size -= to_add;
-  start = size == 0 ? start : (start + to_add);
+    // Add segment to this manager
+    free(start, size_added);
+    _size += size_added;
+    _limit = zoffset_end(untype(start) + size_added);
+    log_trace(gc, heap)("Virtual address range initialized at: " PTR_FORMAT " %zuM", untype(ZOffset::address_unsafe(start)), size_added / M);
+  } while (!is_complete());
 }
 
 void ZVirtualMemoryManager::distribute_reserved_segments() {
-  ZMemory* segment = _reserved_segments.remove_first();
-  while (segment != nullptr) {
-    distribute_reserved_segment(segment->start(), segment->size());
-    delete segment;
-    segment = _reserved_segments.remove_first();
-  }
+  _small_manager.initialize(_reserved_segments);
+  _shared_manager.initialize(_reserved_segments);
 }
-
-void ZVirtualMemoryManager::distribute_reserved_segment(zoffset start, size_t size) {
-  size_t current_size = size;
-  zoffset current_offset = start;
-  // First initialize the manager used for small page allocations.
-  if (!_small_manager.is_initialized()) {
-    _small_manager.initialize(current_offset, current_size);
-  }
-
-  // If there is more left of this segment, add it to the shared manager
-  // handling medium and large page allocations.
-  if (current_size > 0) {
-    assert(_small_manager.is_initialized(), "Should fully initialize small first");
-    _shared_manager.initialize(current_offset, current_size);
-  }
-}
-
 
 bool ZVirtualMemoryManager::reserve_contiguous(zoffset start, size_t size) {
   assert(is_aligned(size, ZGranuleSize), "Must be granule aligned " SIZE_FORMAT_X, size);
@@ -200,6 +183,7 @@ bool ZVirtualMemoryManager::reserve_contiguous(zoffset start, size_t size) {
   // Make the address range free and keep it in the reserved
   // segment manager for later distribution.
   _reserved_segments.free(start, size);
+  log_trace(gc, heap)("Virtual address range reserved at: " PTR_FORMAT " %zuM", untype(addr), size / M);
 
   return true;
 }
@@ -270,6 +254,11 @@ ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool force_low_address)
     start = _small_manager.alloc(size);
   } else {
     start = _shared_manager.alloc(size);
+    if (start == zoffset(UINTPTR_MAX) && !_shared_manager.is_complete()) {
+      // In the case of a limited address space allow larger allocations
+      // through the small manager.
+      start = _small_manager.alloc(size);
+    }
   }
 
   if (start == zoffset(UINTPTR_MAX)) {

@@ -75,7 +75,7 @@ inline zoffset_end ZSizedMemoryManager::limit() const {
   return _limit;
 }
 
-inline bool ZSizedMemoryManager::is_initialized() const {
+inline bool ZSizedMemoryManager::is_complete() const {
   return _size == _capacity;
 }
 
