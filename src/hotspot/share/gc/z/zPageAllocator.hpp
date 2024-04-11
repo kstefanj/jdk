@@ -106,6 +106,7 @@ private:
   void destroy_page(ZPage* page);
 
   bool is_alloc_allowed(size_t size) const;
+  bool use_low_address(ZPageAllocation* allocation) const;
 
   bool alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages, ZPhysicalMemory* pmem);
   bool alloc_page_common(ZPageAllocation* allocation);

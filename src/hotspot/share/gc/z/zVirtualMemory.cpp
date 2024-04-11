@@ -212,12 +212,10 @@ bool ZVirtualMemoryManager::is_initialized() const {
   return _initialized;
 }
 
-ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool force_low_address) {
+ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool low_address) {
   zoffset start;
 
-  // Small pages are allocated at low addresses, while medium/large pages
-  // are allocated at high addresses (unless forced to be at a low address).
-  if (force_low_address || size <= ZPageSizeSmall) {
+  if (low_address) {
     start = _manager.alloc_low_address(size);
   } else {
     start = _manager.alloc_high_address(size);

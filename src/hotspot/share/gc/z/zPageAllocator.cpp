@@ -494,6 +494,12 @@ bool ZPageAllocator::is_alloc_allowed(size_t size) const {
   return available >= size;
 }
 
+bool ZPageAllocator::use_low_address(ZPageAllocation* allocation) const {
+  // Small and medium pages are allocated at low addresses, while large pages
+  // are allocated at high addresses (unless forced to be at a low address).
+  return allocation->type() != ZPageType::large || allocation->flags().low_address();
+}
+
 bool ZPageAllocator::alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages, ZPhysicalMemory* pmem) {
   if (!is_alloc_allowed(size)) {
     // Out of memory
@@ -619,7 +625,7 @@ ZPage* ZPageAllocator::alloc_page_create(ZPageAllocation* allocation) {
   // forward, we allocate virtual memory before destroying flushed pages.
   // Flushed pages are also unmapped and destroyed asynchronously, so we
   // can't immediately reuse that part of the address space anyway.
-  const ZVirtualMemory vmem = _virtual.alloc(size, allocation->flags().low_address());
+  const ZVirtualMemory vmem = _virtual.alloc(size, use_low_address(allocation));
   if (vmem.is_null()) {
     log_error(gc)("Out of address space");
     allocation->set_out_of_va(true);
