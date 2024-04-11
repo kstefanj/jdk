@@ -109,6 +109,7 @@ private:
   size_t                     _committed;
   bool                       _out_of_va;
   ZList<ZPage>               _pages;
+  ZPhysicalMemory            _pmem;
   ZListNode<ZPageAllocation> _node;
   ZFuture<bool>              _stall_result;
 
@@ -123,6 +124,7 @@ public:
       _committed(0),
       _out_of_va(false),
       _pages(),
+      _pmem(),
       _node(),
       _stall_result() {}
 
@@ -178,6 +180,10 @@ public:
     return &_pages;
   }
 
+  ZPhysicalMemory* pmem() {
+    return &_pmem;
+  }
+
   void satisfy(bool result) {
     _stall_result.set(result);
   }
@@ -195,6 +201,7 @@ ZPageAllocator::ZPageAllocator(size_t min_capacity,
     _cache(),
     _virtual(max_capacity),
     _physical(max_capacity),
+    _pmem_cache(),
     _min_capacity(min_capacity),
     _initial_capacity(initial_capacity),
     _max_capacity(max_capacity),
@@ -285,7 +292,7 @@ bool ZPageAllocator::prime_cache(ZWorkers* workers, size_t size) {
     workers->run_all(&task);
   }
 
-  free_page(page);
+  prime_page(page);
 
   return true;
 }
@@ -469,8 +476,19 @@ void ZPageAllocator::destroy_page(ZPage* page) {
   // Free virtual memory
   _virtual.free(page->virtual_memory());
 
-  // Free physical memory
-  _physical.free(page->physical_memory());
+  // Handle physical memory
+  if (page->type() == ZPageType::large) {
+    // Harvest and cache the committed physical memory for
+    // large pages
+    ZPhysicalMemory& pmem = page->physical_memory();
+    ZPhysicalMemory committed = pmem.split_committed();
+
+    _pmem_cache.add_segments(committed);
+    _physical.free(pmem);
+  } else {
+    // Free physical memory
+    _physical.free(page->physical_memory());
+  }
 
   // Destroy page safely
   safe_destroy_page(page);
@@ -481,7 +499,7 @@ bool ZPageAllocator::is_alloc_allowed(size_t size) const {
   return available >= size;
 }
 
-bool ZPageAllocator::alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages) {
+bool ZPageAllocator::alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages, ZPhysicalMemory* pmem) {
   if (!is_alloc_allowed(size)) {
     // Out of memory
     return false;
@@ -495,12 +513,24 @@ bool ZPageAllocator::alloc_page_common_inner(ZPageType type, size_t size, ZList<
     return true;
   }
 
+  // Chech the committed cache
+  size_t size_left_allocate = size;
+  if (_pmem_cache.size() > 0) {
+    // Can use the committed physical cache
+    pmem->add_segments(_pmem_cache.split(size_left_allocate));
+    if (pmem->size() == size_left_allocate) {
+      return true;
+    }
+    // Still need more memory
+    size_left_allocate -= pmem->size();
+  }
+
   // Try increase capacity
-  const size_t increased = increase_capacity(size);
-  if (increased < size) {
+  const size_t increased = increase_capacity(size_left_allocate);
+  if (increased < size_left_allocate) {
     // Could not increase capacity enough to satisfy the allocation
     // completely. Flush the page cache to satisfy the remainder.
-    const size_t remaining = size - increased;
+    const size_t remaining = size_left_allocate - increased;
     _cache.flush_for_allocation(remaining, pages);
   }
 
@@ -513,8 +543,9 @@ bool ZPageAllocator::alloc_page_common(ZPageAllocation* allocation) {
   const size_t size = allocation->size();
   const ZAllocationFlags flags = allocation->flags();
   ZList<ZPage>* const pages = allocation->pages();
+  ZPhysicalMemory* pmem = allocation->pmem();
 
-  if (!alloc_page_common_inner(type, size, pages)) {
+  if (!alloc_page_common_inner(type, size, pages, pmem)) {
     // Out of memory
     return false;
   }
@@ -600,7 +631,13 @@ ZPage* ZPageAllocator::alloc_page_create(ZPageAllocation* allocation) {
     return nullptr;
   }
 
-  ZPhysicalMemory pmem;
+  ZPhysicalMemory pmem = *allocation->pmem();
+  // First check if we have enough physical pages already
+  if (pmem.size() == size) {
+    guarantee(allocation->pages()->is_empty(), "Should be nothing to flush");
+    return new ZPage(allocation->type(), vmem, pmem);
+  }
+
   size_t flushed = 0;
 
   // Harvest physical memory from flushed pages
@@ -628,7 +665,7 @@ ZPage* ZPageAllocator::alloc_page_create(ZPageAllocation* allocation) {
   // Allocate any remaining physical memory. Capacity and used has
   // already been adjusted, we just need to fetch the memory, which
   // is guaranteed to succeed.
-  if (flushed < size) {
+  if (pmem.size() < size) {
     const size_t remaining = size - flushed;
     allocation->set_committed(remaining);
     _physical.alloc(pmem, remaining);
@@ -661,6 +698,10 @@ bool ZPageAllocator::is_alloc_satisfied(ZPageAllocation* allocation) const {
   }
 
   const ZPage* const page = allocation->pages()->first();
+  if (page == nullptr) {
+    return false;
+  }
+
   if (page->type() != allocation->type() ||
       page->size() != allocation->size()) {
     // Wrong type or size
@@ -787,17 +828,50 @@ void ZPageAllocator::satisfy_stalled() {
   }
 }
 
+void ZPageAllocator::unmap_if_large(ZPage* page) {
+  // Large pages are not cached to avoid fragmentation we instead
+  // harvest the committed physical memory to allow efficient
+  // re-creation of large pages.
+  if (page->type() == ZPageType::large) {
+    unmap_page(page);
+  }
+}
+
 void ZPageAllocator::recycle_page(ZPage* page) {
   // Set time when last used
   page->set_last_used();
 
-  // Cache page
+  if (page->type() == ZPageType::large) {
+    // Destroy the already unmapped page
+    destroy_page(page);
+  } else {
+    // Cache non-large pages
+    _cache.free_page(page);
+  }
+}
+
+void ZPageAllocator::prime_page(ZPage* page) {
+  // Can't use free below because it would harvest the physical memory
+  // from the large page rather than caching it.
+  const ZGenerationId generation_id = page->generation_id();
+
+  ZLocker<ZLock> locker(&_lock);
+
+  // Update used statistics
+  const size_t size = page->size();
+  decrease_used(size);
+  decrease_used_generation(generation_id, size);
+
+  // Add primed page to the cache
   _cache.free_page(page);
 }
 
 void ZPageAllocator::free_page(ZPage* page) {
   const ZGenerationId generation_id = page->generation_id();
   ZPage* const to_recycle = _safe_recycle.register_and_clone_if_activated(page);
+
+  // Do unmapping outside the lock
+  unmap_if_large(page);
 
   ZLocker<ZLock> locker(&_lock);
 
@@ -827,6 +901,8 @@ void ZPageAllocator::free_pages(const ZArray<ZPage*>* pages) {
       old_size += page->size();
     }
     to_recycle.push(_safe_recycle.register_and_clone_if_activated(page));
+    // Do unmapping outside the lock
+    unmap_if_large(page);
   }
 
   ZLocker<ZLock> locker(&_lock);
@@ -852,6 +928,8 @@ void ZPageAllocator::free_pages_alloc_failed(ZPageAllocation* allocation) {
   ZListRemoveIterator<ZPage> allocation_pages_iter(allocation->pages());
   for (ZPage* page; allocation_pages_iter.next(&page);) {
     to_recycle.push(_safe_recycle.register_and_clone_if_activated(page));
+    // Do unmapping outside the lock
+    unmap_if_large(page);
   }
 
   ZLocker<ZLock> locker(&_lock);

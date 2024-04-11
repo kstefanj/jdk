@@ -68,6 +68,7 @@ private:
   ZPageCache                 _cache;
   ZVirtualMemoryManager      _virtual;
   ZPhysicalMemoryManager     _physical;
+  ZPhysicalMemory            _pmem_cache;
   const size_t               _min_capacity;
   const size_t               _initial_capacity;
   const size_t               _max_capacity;
@@ -106,7 +107,7 @@ private:
 
   bool is_alloc_allowed(size_t size) const;
 
-  bool alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages);
+  bool alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages, ZPhysicalMemory* pmem);
   bool alloc_page_common(ZPageAllocation* allocation);
   bool alloc_page_stall(ZPageAllocation* allocation);
   bool alloc_page_or_stall(ZPageAllocation* allocation);
@@ -115,6 +116,7 @@ private:
   ZPage* alloc_page_create(ZPageAllocation* allocation);
   ZPage* alloc_page_finalize(ZPageAllocation* allocation);
   void free_pages_alloc_failed(ZPageAllocation* allocation);
+  void prime_page(ZPage* page);
 
   void satisfy_stalled();
 
@@ -149,6 +151,7 @@ public:
   void reset_statistics(ZGenerationId id);
 
   ZPage* alloc_page(ZPageType type, size_t size, ZAllocationFlags flags, ZPageAge age);
+  void unmap_if_large(ZPage* page);
   void recycle_page(ZPage* page);
   void safe_destroy_page(ZPage* page);
   void free_page(ZPage* page);
