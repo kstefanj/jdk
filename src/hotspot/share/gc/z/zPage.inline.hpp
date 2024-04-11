@@ -42,7 +42,7 @@
 #include "utilities/checkedCast.hpp"
 #include "utilities/debug.hpp"
 
-inline ZPageType ZPage::type_from_size(size_t size) const {
+inline ZPageType ZPage::type_from_size(size_t size) {
   if (size == ZPageSizeSmall) {
     return ZPageType::small;
   } else if (size == ZPageSizeMedium) {

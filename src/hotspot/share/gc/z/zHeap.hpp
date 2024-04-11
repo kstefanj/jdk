@@ -106,6 +106,7 @@ public:
   void undo_alloc_page(ZPage* page);
   void free_page(ZPage* page);
   size_t free_empty_pages(const ZArray<ZPage*>* pages);
+  void prime_pages();
 
   // Object allocation
   bool is_alloc_stalling() const;

@@ -230,6 +230,14 @@ ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool force_low_address)
   return ZVirtualMemory(start, size);
 }
 
+ZVirtualMemory ZVirtualMemoryManager::alloc_at_most(size_t size) {
+  size_t actual = 0;
+  zoffset start = _manager.alloc_low_address_at_most(size, &actual);
+
+  assert(start != zoffset(UINTPTR_MAX), "Not able to allocate any virtual address");
+  return ZVirtualMemory(start, actual);
+}
+
 void ZVirtualMemoryManager::free(const ZVirtualMemory& vmem) {
   _manager.free(vmem.start(), vmem.size());
 }

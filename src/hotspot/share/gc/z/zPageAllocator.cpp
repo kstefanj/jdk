@@ -922,6 +922,32 @@ void ZPageAllocator::free_pages(const ZArray<ZPage*>* pages) {
   satisfy_stalled();
 }
 
+void ZPageAllocator::prime_pages() {
+  // Prime new pages for cache as long as we have cached committed
+  // physical memory available.
+  while (_pmem_cache.size() > 0) {
+    ZLocker<ZLock> locker(&_lock);
+
+    // Limit primed pages to be at most as large as a medium page
+    size_t at_most = MIN2(_pmem_cache.size(), ZPageSizeMedium);
+    if (at_most == 0) {
+      // Cached physical already reused
+      return;
+    }
+
+    // Alloc virtual memory from the bottom of the address space to avoid
+    // fragmentation. Will always succeed to at least alloc a small page.
+    ZVirtualMemory vmem = _virtual.alloc_at_most(at_most);
+    ZPhysicalMemory pmem = _pmem_cache.split(vmem.size());
+    ZPage* page = new ZPage(ZPage::type_from_size(vmem.size()), vmem, pmem);
+
+    // Map the already committed page
+    map_page(page);
+
+    _cache.free_page(page);
+  }
+}
+
 void ZPageAllocator::free_pages_alloc_failed(ZPageAllocation* allocation) {
   ZArray<ZPage*> to_recycle;
 

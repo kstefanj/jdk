@@ -276,6 +276,10 @@ size_t ZHeap::free_empty_pages(const ZArray<ZPage*>* pages) {
   return freed;
 }
 
+void ZHeap::prime_pages() {
+  _page_allocator.prime_pages();
+}
+
 void ZHeap::keep_alive(oop obj) {
   const zaddress addr = to_zaddress(obj);
   ZBarrier::mark<ZMark::Resurrect, ZMark::AnyThread, ZMark::Follow, ZMark::Strong>(addr);

@@ -194,7 +194,6 @@ void ZPageCache::free_page(ZPage* page) {
   } else if (type == ZPageType::medium) {
     _medium.insert_first(page);
   } else {
-    log_debug(gc, page)("Caching large page: " PTR_FORMAT " %zuM", untype(page->start()), page->size() / M);
     _large.insert_first(page);
   }
 }
