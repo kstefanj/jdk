@@ -68,7 +68,6 @@ private:
   ZPhysicalMemory      _physical;
   ZListNode<ZPage>     _node;
 
-  ZPageType type_from_size(size_t size) const;
   const char* type_to_string() const;
 
   BitMap::idx_t bit_index(zaddress addr) const;
@@ -90,6 +89,8 @@ private:
 
 public:
   ZPage(ZPageType type, const ZVirtualMemory& vmem, const ZPhysicalMemory& pmem);
+
+  static ZPageType type_from_size(size_t size);
 
   ZPage* clone_limited() const;
   ZPage* clone_limited_promote_flipped() const;

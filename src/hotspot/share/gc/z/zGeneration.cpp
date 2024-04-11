@@ -236,6 +236,9 @@ void ZGeneration::select_relocation_set(ZGenerationId generation, bool promote_a
     free_empty_pages(&selector, 0 /* bulk */);
   }
 
+  // Prime pages using newly freed memory
+  ZHeap::heap()->prime_pages();
+
   // Select relocation set
   selector.select();
 

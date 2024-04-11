@@ -118,6 +118,7 @@ private:
   ZPage* alloc_page_finalize(ZPageAllocation* allocation);
   void free_pages_alloc_failed(ZPageAllocation* allocation);
   void prime_page(ZPage* page);
+  ZPage* prime_pages_inner();
 
   void satisfy_stalled();
 
@@ -157,7 +158,7 @@ public:
   void safe_destroy_page(ZPage* page);
   void free_page(ZPage* page);
   void free_pages(const ZArray<ZPage*>* pages);
-
+  void prime_pages();
   void enable_safe_destroy() const;
   void disable_safe_destroy() const;
 
