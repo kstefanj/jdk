@@ -51,7 +51,6 @@
 
 static const ZStatCounter       ZCounterMutatorAllocationRate("Memory", "Allocation Rate", ZStatUnitBytesPerSecond);
 static const ZStatCounter       ZCounterPageCacheFlush("Memory", "Page Cache Flush", ZStatUnitBytesPerSecond);
-static const ZStatCounter       ZCounterDefragment("Memory", "Defragment", ZStatUnitOpsPerSecond);
 static const ZStatCriticalPhase ZCriticalPhaseAllocationStall("Allocation Stall");
 
 ZSafePageRecycle::ZSafePageRecycle(ZPageAllocator* page_allocator)
@@ -675,16 +674,6 @@ ZPage* ZPageAllocator::alloc_page_create(ZPageAllocation* allocation) {
   return new ZPage(allocation->type(), vmem, pmem);
 }
 
-bool ZPageAllocator::should_defragment(const ZPage* page) const {
-  // A small page can end up at a high address (second half of the address space)
-  // if we've split a larger page or we have a constrained address space. To help
-  // fight address space fragmentation we remap such pages to a lower address, if
-  // a lower address is available.
-  return page->type() == ZPageType::small &&
-         page->start() >= to_zoffset(_virtual.reserved() / 2) &&
-         page->start() > _virtual.lowest_available_address();
-}
-
 bool ZPageAllocator::is_alloc_satisfied(ZPageAllocation* allocation) const {
   // The allocation is immediately satisfied if the list of pages contains
   // exactly one page, with the type and size that was requested. However,
@@ -705,12 +694,6 @@ bool ZPageAllocator::is_alloc_satisfied(ZPageAllocation* allocation) const {
   if (page->type() != allocation->type() ||
       page->size() != allocation->size()) {
     // Wrong type or size
-    return false;
-  }
-
-  if (should_defragment(page)) {
-    // Defragment address space
-    ZStatInc(ZCounterDefragment);
     return false;
   }
 
