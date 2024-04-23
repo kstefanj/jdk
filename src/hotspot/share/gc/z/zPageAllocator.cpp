@@ -867,7 +867,9 @@ void ZPageAllocator::free_pages_alloc_failed(ZPageAllocation* allocation) {
 
   // Adjust capacity and used to reflect the failed capacity increase
   const size_t remaining = allocation->size() - freed;
-  decrease_capacity(remaining, true /* set_max_capacity */);
+  if (remaining > 0) {
+    decrease_capacity(remaining, true /* set_max_capacity */);
+  }
 
   // Try satisfy stalled allocations
   satisfy_stalled();
