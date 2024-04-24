@@ -926,24 +926,29 @@ void ZPageAllocator::free_pages(const ZArray<ZPage*>* pages) {
 ZPage* ZPageAllocator::prime_pages_inner() {
   ZLocker<ZLock> locker(&_lock);
 
-  // Limit primed pages to be at most as large as a medium page
-  size_t at_most = MIN2(_pmem_cache.size(), ZPageSizeMedium);
-  if (at_most == 0) {
+  // We limit the size of primed pages to at most ZPageSizeMedium
+  size_t limit = MAX2(ZPageSizeSmall, ZPageSizeMedium);
+  size_t size = MIN2(_pmem_cache.size(), limit);
+
+  if (size == 0) {
     // Cached physical already reused
     return nullptr;
+  } else if (size != ZPageSizeMedium) {
+    // Ensure that we never prime any large pages
+    size = ZPageSizeSmall;
   }
 
-  // Alloc virtual memory from the bottom of the address space to avoid
-  // fragmentation. Will always succeed to at least alloc a small page.
-  ZVirtualMemory vmem = _virtual.alloc_at_most(at_most);
-  ZPhysicalMemory pmem = _pmem_cache.split(vmem.size());
+  // Small and medium pages are allocated at low addresses
+  ZVirtualMemory vmem = _virtual.alloc(size, true);
+  ZPhysicalMemory pmem = _pmem_cache.split(size);
+
+  log_trace(gc, page)("Prime %zuM page at offset: %zuM (cache size: %zuM)", size / M, untype(vmem.start()) / M, _pmem_cache.size() / M);
 
   return new ZPage(ZPage::type_from_size(vmem.size()), vmem, pmem);
 }
 
 void ZPageAllocator::prime_pages() {
-  // Prime new pages for cache as long as we have cached committed
-  // physical memory available.
+  // Prime new pages from the cached physical memory
   while (_pmem_cache.size() > 0) {
     ZPage* page = prime_pages_inner();
 
