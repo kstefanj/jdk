@@ -927,6 +927,9 @@ ZPage* ZPageAllocator::prime_pages_inner() {
 
   log_trace(gc, page)("Prime %zuM page at offset: %zuM (cache size: %zuM)", size / M, untype(vmem.start()) / M, _pmem_cache.size() / M);
 
+  // Increase used to ensure correct accounting until insterted into cache
+  increase_used(size);
+
   return new ZPage(ZPage::type_from_size(vmem.size()), vmem, pmem);
 }
 
@@ -934,12 +937,20 @@ void ZPageAllocator::prime_pages() {
   // Prime new pages from the cached physical memory
   while (_pmem_cache.size() > 0) {
     ZPage* page = prime_pages_inner();
+    if (page == nullptr) {
+      // Nothing more to prime
+      return;
+    }
 
     // Map the already committed page
     map_page(page);
 
     // Grab the lock and hand the page to the cache
     ZLocker<ZLock> locker(&_lock);
+
+    // Decrease used to again show the memory is available
+    decrease_used(page->size());
+
     _cache.free_page(page);
   }
 }
