@@ -179,8 +179,8 @@ public:
     return &_pages;
   }
 
-  ZPhysicalMemory* pmem() {
-    return &_pmem;
+  ZPhysicalMemory& pmem() {
+    return _pmem;
   }
 
   void satisfy(bool result) {
@@ -499,7 +499,7 @@ bool ZPageAllocator::use_low_address(ZPageAllocation* allocation) const {
   return allocation->type() != ZPageType::large || allocation->flags().low_address();
 }
 
-bool ZPageAllocator::alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages, ZPhysicalMemory* pmem) {
+bool ZPageAllocator::alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages, ZPhysicalMemory& pmem) {
   if (!is_alloc_allowed(size)) {
     // Out of memory
     return false;
@@ -517,12 +517,12 @@ bool ZPageAllocator::alloc_page_common_inner(ZPageType type, size_t size, ZList<
   size_t size_left_allocate = size;
   if (_pmem_cache.size() > 0) {
     // Can use the committed physical cache
-    pmem->add_segments(_pmem_cache.split(size_left_allocate));
-    if (pmem->size() == size_left_allocate) {
+    pmem.add_segments(_pmem_cache.split(size_left_allocate));
+    if (pmem.size() == size_left_allocate) {
       return true;
     }
     // Still need more memory
-    size_left_allocate -= pmem->size();
+    size_left_allocate -= pmem.size();
   }
 
   // Try increase capacity
@@ -543,7 +543,7 @@ bool ZPageAllocator::alloc_page_common(ZPageAllocation* allocation) {
   const size_t size = allocation->size();
   const ZAllocationFlags flags = allocation->flags();
   ZList<ZPage>* const pages = allocation->pages();
-  ZPhysicalMemory* pmem = allocation->pmem();
+  ZPhysicalMemory& pmem = allocation->pmem();
 
   if (!alloc_page_common_inner(type, size, pages, pmem)) {
     // Out of memory
@@ -631,7 +631,7 @@ ZPage* ZPageAllocator::alloc_page_create(ZPageAllocation* allocation) {
     return nullptr;
   }
 
-  ZPhysicalMemory pmem = *allocation->pmem();
+  ZPhysicalMemory& pmem = allocation->pmem();
   // First check if we have enough physical pages already
   if (pmem.size() == size) {
     guarantee(allocation->pages()->is_empty(), "Should be nothing to flush");
@@ -666,7 +666,7 @@ ZPage* ZPageAllocator::alloc_page_create(ZPageAllocation* allocation) {
   // already been adjusted, we just need to fetch the memory, which
   // is guaranteed to succeed.
   if (pmem.size() < size) {
-    const size_t remaining = size - flushed;
+    const size_t remaining = size - pmem.size();
     allocation->set_committed(remaining);
     _physical.alloc(pmem, remaining);
   }
