@@ -471,18 +471,13 @@ void ZPageAllocator::destroy_page(ZPage* page) {
   // Free virtual memory
   _virtual.free(page->virtual_memory());
 
-  if (page->type() == ZPageType::large) {
-    // For large pages we cache any committed physical memory
-    // to allow efficient reuse of the memory.
-    ZPhysicalMemory& pmem = page->physical_memory();
-    ZPhysicalMemory committed = pmem.split_committed();
+  // Harvest committed physical memory for efficient reuse
+  ZPhysicalMemory& pmem = page->physical_memory();
+  ZPhysicalMemory committed = pmem.split_committed();
+  _pmem_cache.add_segments(committed);
 
-    _pmem_cache.add_segments(committed);
-    _physical.free(pmem);
-  } else {
-    // Free physical memory
-    _physical.free(page->physical_memory());
-  }
+  // Free any uncommitted parts of physical memory
+  _physical.free(pmem);
 
   // Destroy page safely
   safe_destroy_page(page);
@@ -493,10 +488,14 @@ bool ZPageAllocator::is_alloc_allowed(size_t size) const {
   return available >= size;
 }
 
+bool ZPageAllocator::should_cache(size_t page_size) const {
+  // Only cache pages that are smaller or equal to a medium page (if in use)
+  return page_size <= MAX2(ZPageSizeSmall, ZPageSizeMedium);
+}
+
 bool ZPageAllocator::use_low_address(ZPageAllocation* allocation) const {
-  // Small and medium pages are allocated at low addresses, while large pages
-  // are allocated at high addresses (unless forced to be at a low address).
-  return allocation->type() != ZPageType::large || allocation->flags().low_address();
+  // Allocate pages that we cache at low addresses
+  return should_cache(allocation->size()) || allocation->flags().low_address();
 }
 
 bool ZPageAllocator::alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages, ZPhysicalMemory& pmem) {
@@ -812,11 +811,10 @@ void ZPageAllocator::satisfy_stalled() {
   }
 }
 
-void ZPageAllocator::unmap_if_large(ZPage* page) {
-  // Large pages are not cached to avoid fragmentation we instead
-  // harvest the committed physical memory to allow efficient
-  // re-creation of large pages.
-  if (page->type() == ZPageType::large) {
+void ZPageAllocator::maybe_unmap(ZPage* page) {
+  // Pages over a certain size are not cached, these are unmapped and
+  // later cached as smaller pages.
+  if (!should_cache(page->size())) {
     unmap_page(page);
   }
 }
@@ -825,12 +823,12 @@ void ZPageAllocator::recycle_page(ZPage* page) {
   // Set time when last used
   page->set_last_used();
 
-  if (page->type() == ZPageType::large) {
-    // Destroy the already unmapped page
-    destroy_page(page);
-  } else {
+  if (should_cache(page->size())) {
     // Cache non-large pages
     _cache.free_page(page);
+  } else {
+    // Destroy the already unmapped page
+    destroy_page(page);
   }
 }
 
@@ -855,7 +853,7 @@ void ZPageAllocator::free_page(ZPage* page) {
   ZPage* const to_recycle = _safe_recycle.register_and_clone_if_activated(page);
 
   // Do unmapping outside the lock
-  unmap_if_large(page);
+  maybe_unmap(page);
 
   ZLocker<ZLock> locker(&_lock);
 
@@ -886,7 +884,7 @@ void ZPageAllocator::free_pages(const ZArray<ZPage*>* pages) {
     }
     to_recycle.push(_safe_recycle.register_and_clone_if_activated(page));
     // Do unmapping outside the lock
-    unmap_if_large(page);
+    maybe_unmap(page);
   }
 
   ZLocker<ZLock> locker(&_lock);
@@ -962,7 +960,7 @@ void ZPageAllocator::free_pages_alloc_failed(ZPageAllocation* allocation) {
   for (ZPage* page; allocation_pages_iter.next(&page);) {
     to_recycle.push(_safe_recycle.register_and_clone_if_activated(page));
     // Do unmapping outside the lock
-    unmap_if_large(page);
+    maybe_unmap(page);
   }
 
   ZLocker<ZLock> locker(&_lock);

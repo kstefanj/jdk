@@ -106,6 +106,7 @@ private:
   void destroy_page(ZPage* page);
 
   bool is_alloc_allowed(size_t size) const;
+  bool should_cache(size_t page_size) const;
   bool use_low_address(ZPageAllocation* allocation) const;
 
   bool alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages, ZPhysicalMemory& pmem);
@@ -152,7 +153,7 @@ public:
   void reset_statistics(ZGenerationId id);
 
   ZPage* alloc_page(ZPageType type, size_t size, ZAllocationFlags flags, ZPageAge age);
-  void unmap_if_large(ZPage* page);
+  void maybe_unmap(ZPage* page);
   void recycle_page(ZPage* page);
   void safe_destroy_page(ZPage* page);
   void free_page(ZPage* page);
