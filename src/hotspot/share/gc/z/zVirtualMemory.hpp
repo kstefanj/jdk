@@ -59,7 +59,7 @@ private:
 
   // Log new fragmentation level only if difference compared to the
   // last value is large enough.
-  static constexpr double _fragmentation_report_diff = 0.05;
+  static constexpr double _fragmentation_report_diff = 0.02;
 
   // Platform specific implementation
   void pd_initialize_before_reserve();

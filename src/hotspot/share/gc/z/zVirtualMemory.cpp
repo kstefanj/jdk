@@ -236,11 +236,11 @@ void ZVirtualMemoryManager::free(const ZVirtualMemory& vmem) {
 }
 
 void ZVirtualMemoryManager::log_fragmentation() {
-  if (log_is_enabled(Info, gc, heap)) {
+  if (log_is_enabled(Info, gc, heap, page)) {
     double fragmentation = _manager.fragmentation();
     if (fragmentation < _last_fragmentation - _fragmentation_report_diff ||
         fragmentation > _last_fragmentation + _fragmentation_report_diff) {
-      log_info(gc, heap)("Virtual Address Space fragmentation: %.0f%%", fragmentation * 100);
+      log_info(gc, heap, page)("Virtual Address Space fragmentation: %.0f%%", fragmentation * 100);
       _last_fragmentation = fragmentation;
     }
   }
