@@ -29,6 +29,7 @@
 #include "gc/z/zGlobals.hpp"
 #include "gc/z/zNMT.hpp"
 #include "gc/z/zVirtualMemory.inline.hpp"
+#include "jfr/jfrEvents.hpp"
 #include "utilities/align.hpp"
 #include "utilities/debug.hpp"
 
@@ -227,12 +228,19 @@ ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool force_low_address)
   if (start == zoffset(UINTPTR_MAX)) {
     return ZVirtualMemory();
   }
-
+  EventZVAUsed used;
+  used.commit(untype(start), size);
   return ZVirtualMemory(start, size);
 }
 
+void ZVirtualMemoryManager::free(zoffset start, size_t size) {
+  EventZVAFree free;
+  _manager.free(start, size);
+  free.commit(untype(start), size);
+}
+
 void ZVirtualMemoryManager::free(const ZVirtualMemory& vmem) {
-  _manager.free(vmem.start(), vmem.size());
+  free(vmem.start(), vmem.size());
 }
 
 void ZVirtualMemoryManager::log_fragmentation() {

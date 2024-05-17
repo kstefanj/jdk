@@ -73,6 +73,17 @@
     <Field type="string" name="name" label="Name" />
   </Event>
 
+  <Event name="ZVAFree" category="Java Virtual Machine, GC, Detailed" label="ZGC Free VA" description="Free virtual address range" thread="true" internal="true">
+    <Field type="ulong" contentType="address" name="start" label="Address" description="Start of free range" />
+    <Field type="ulong" contentType="bytes" name="size" label="Size" description="Size of free range" />
+  </Event>
+
+  <Event name="ZVAUsed" category="Java Virtual Machine, GC, Detailed" label="ZGC Used VA" description="Used virtual address range" thread="true" internal="true">
+    <Field type="ulong" contentType="address" name="start" label="Address" description="Start of used range" />
+    <Field type="ulong" contentType="bytes" name="size" label="Size" description="Size of used range" />
+  </Event>
+
+
   <Event name="ResidentSetSize" category="Java Virtual Machine, Memory" label="Resident Set Size" description="Resident set size of the process" thread="false" period="everyChunk">
     <Field type="ulong" contentType="bytes" name="size" label="Resident Set Size" description="Resident set size of the process" />
     <Field type="ulong" contentType="bytes" name="peak" label="Resident Set Size Peak Value" description="Resident set size peak value of the process" />
