@@ -41,6 +41,7 @@
 #include "gc/z/zUncommitter.hpp"
 #include "gc/z/zUnmapper.hpp"
 #include "gc/z/zWorkers.hpp"
+#include "jfr/jfr.hpp"
 #include "jfr/jfrEvents.hpp"
 #include "logging/log.hpp"
 #include "runtime/globals.hpp"
@@ -192,6 +193,7 @@ ZPageAllocator::ZPageAllocator(size_t min_capacity,
                                size_t soft_max_capacity,
                                size_t max_capacity)
   : _lock(),
+    _first(true),
     _cache(),
     _virtual(max_capacity),
     _physical(max_capacity),
@@ -1016,4 +1018,12 @@ void ZPageAllocator::handle_alloc_stalling_for_old(bool cleared_soft_refs) {
 void ZPageAllocator::threads_do(ThreadClosure* tc) const {
   tc->do_thread(_unmapper);
   tc->do_thread(_uncommitter);
+}
+
+void ZPageAllocator::send_events() {
+  if (_first && Jfr::is_recording()) {
+    log_warning(gc)("Dump VA");
+    _first = false;
+    _virtual.send_events();
+  }
 }

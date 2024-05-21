@@ -87,6 +87,7 @@ public:
   void free(zoffset start, size_t size);
   void free(const ZVirtualMemory& vmem);
   void log_fragmentation();
+  void send_events() const;
 };
 
 #endif // SHARE_GC_Z_ZVIRTUALMEMORY_HPP

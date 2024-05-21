@@ -130,6 +130,8 @@ public:
   MemoryPool* serviceability_memory_pool(ZGenerationId id);
   ZServiceabilityCounters* serviceability_counters();
 
+  void send_events();
+
   // Printing
   void print_on(outputStream* st) const;
   void print_extended_on(outputStream* st) const;

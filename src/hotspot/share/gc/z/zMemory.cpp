@@ -25,6 +25,7 @@
 #include "gc/z/zList.inline.hpp"
 #include "gc/z/zLock.inline.hpp"
 #include "gc/z/zMemory.inline.hpp"
+#include "jfr/jfrEvents.hpp"
 
 #include <math.h>
 
@@ -241,4 +242,23 @@ double ZMemoryManager::fragmentation() const {
   double fragmentation = sqrt(total_square) / (double) total_free;
 
   return 1.0 - fragmentation;
+}
+
+void ZMemoryManager::send_events() const {
+  ZLocker<ZLock> locker(&_lock);
+
+  zoffset used_start = zoffset(0);
+
+  ZListIterator<ZMemory> iter(&_freelist);
+  for (ZMemory* area; iter.next(&area);) {
+    if (used_start != zoffset(UINTPTR_MAX)) {
+      guarantee(used_start != area->start(), "inv");
+      EventZVAUsed event;
+      size_t used_size = area->start() - used_start;
+      event.commit(untype(used_start), used_size);
+    }
+    EventZVAFree event;
+    event.commit(untype(area->start()), area->size());
+    used_start = zoffset(area->end());
+  }
 }

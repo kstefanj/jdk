@@ -65,6 +65,7 @@ class ZPageAllocator {
 
 private:
   mutable ZLock              _lock;
+  bool                       _first;
   ZPageCache                 _cache;
   ZVirtualMemoryManager      _virtual;
   ZPhysicalMemoryManager     _physical;
@@ -166,6 +167,7 @@ public:
   void handle_alloc_stalling_for_old(bool cleared_soft_refs);
 
   void threads_do(ThreadClosure* tc) const;
+  void send_events();
 };
 
 class ZPageAllocatorStats {
