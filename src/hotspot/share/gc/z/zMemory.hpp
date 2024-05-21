@@ -93,6 +93,7 @@ public:
   void free(zoffset start, size_t size);
 
   double fragmentation() const;
+  void send_events() const;
 };
 
 #endif // SHARE_GC_Z_ZMEMORY_HPP

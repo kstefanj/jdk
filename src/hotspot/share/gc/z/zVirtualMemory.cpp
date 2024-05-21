@@ -251,3 +251,7 @@ void ZVirtualMemoryManager::log_fragmentation() {
     }
   }
 }
+
+void ZVirtualMemoryManager::send_events() const {
+  _manager.send_events();
+}

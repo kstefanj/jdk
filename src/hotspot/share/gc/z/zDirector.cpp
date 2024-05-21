@@ -904,6 +904,7 @@ static ZDirectorStats sample_stats() {
 void ZDirector::run_thread() {
   // Main loop
   while (wait_for_tick()) {
+    ZHeap::heap()->send_events();
     ZDirectorStats stats = sample_stats();
     if (!start_gc(stats)) {
       adjust_gc(stats);

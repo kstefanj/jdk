@@ -451,3 +451,7 @@ bool ZHeap::print_location(outputStream* st, zpointer ptr) const {
   st->print_cr("invalid object " PTR_FORMAT,  untype(addr));
   return false;
 }
+
+void ZHeap::send_events() {
+  _page_allocator.send_events();
+}
