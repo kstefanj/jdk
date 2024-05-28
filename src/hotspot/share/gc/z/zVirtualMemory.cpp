@@ -231,6 +231,20 @@ ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool low_address) {
   return ZVirtualMemory(start, size);
 }
 
+
+ZVirtualMemory ZVirtualMemoryManager::alloc_at_most(size_t requested) {
+  size_t actual = 0;
+  zoffset start = _manager.alloc_low_address_at_most(requested, &actual);
+
+  if (start == zoffset(UINTPTR_MAX)) {
+    return ZVirtualMemory();
+  }
+
+  EventZVAUsed used;
+  used.commit(untype(start), actual);
+  return ZVirtualMemory(start, actual);
+}
+
 void ZVirtualMemoryManager::free(zoffset start, size_t size) {
   EventZVAFree free;
   _manager.free(start, size);
