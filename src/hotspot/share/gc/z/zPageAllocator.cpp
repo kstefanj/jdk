@@ -924,16 +924,19 @@ ZPage* ZPageAllocator::prime_pages_inner() {
     size = ZPageSizeSmall;
   }
 
-  // Small and medium pages are allocated at low addresses
+  // To minimize fragmentation we fill the holes starting at lower addresses.
   ZVirtualMemory vmem = _virtual.alloc_at_most(size);
+
+  // Update size to reflect the actual allocation size
+  size = vmem.size();
   ZPhysicalMemory pmem = _pmem_cache.split(size);
 
-  log_trace(gc, page)("Prime %zuM page at offset: %zuM (cache size: %zuM)", vmem.size() / M, untype(vmem.start()) / M, _pmem_cache.size() / M);
+  log_trace(gc, page)("Prime %zuM page at offset: %zuM (cache size: %zuM)", size / M, untype(vmem.start()) / M, _pmem_cache.size() / M);
 
   // Increase used to ensure correct accounting until insterted into cache
   increase_used(size);
 
-  return new ZPage(ZPage::type_from_size(vmem.size()), vmem, pmem);
+  return new ZPage(ZPage::type_from_size(size), vmem, pmem);
 }
 
 void ZPageAllocator::prime_pages() {
