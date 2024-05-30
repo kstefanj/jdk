@@ -186,6 +186,7 @@ ZPage* ZPage::split(size_t split_of_size) {
 }
 
 ZPage* ZPage::split_with_pmem(ZPageType type, const ZPhysicalMemory& pmem) {
+  size_t old_size = _virtual.size();
   // Resize this page
   const ZVirtualMemory vmem = _virtual.split(pmem.size());
 
@@ -194,10 +195,12 @@ ZPage* ZPage::split_with_pmem(ZPageType type, const ZPhysicalMemory& pmem) {
 
   assert(vmem.end() == _virtual.start(), "Should be consecutive");
 
-  log_trace(gc, page)("Split page [" PTR_FORMAT ", " PTR_FORMAT ", " PTR_FORMAT "]",
+  log_debug(gc, page)("Split page [" PTR_FORMAT ", " PTR_FORMAT ", " PTR_FORMAT "] %zuM -> %zuM",
       untype(vmem.start()),
       untype(vmem.end()),
-      untype(_virtual.end()));
+      untype(_virtual.end()),
+      old_size / M,
+      vmem.size() / M);
 
   // Create new page
   return new ZPage(type, vmem, pmem);
