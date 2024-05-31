@@ -83,6 +83,11 @@
     <Field type="ulong" contentType="bytes" name="size" label="Size" description="Size of used range" />
   </Event>
 
+  <Event name="ZUndoPageAllocation" category="Java Virtual Machine, GC, Detailed" label="ZGC Undo Page Allocation" description="Undo allocation of a ZPage" thread="true" stackTrace="true" internal="true">
+     <Field type="ZPageTypeType" name="type" label="Type" />
+     <Field type="ulong" contentType="bytes" name="size" label="Size" />
+     <Field type="ulong" contentType="bytes" name="allocation" label="Allocation" />
+  </Event>
 
   <Event name="ResidentSetSize" category="Java Virtual Machine, Memory" label="Resident Set Size" description="Resident set size of the process" thread="false" period="everyChunk">
     <Field type="ulong" contentType="bytes" name="size" label="Resident Set Size" description="Resident set size of the process" />

@@ -70,11 +70,11 @@ ZPage* ZObjectAllocator::alloc_page_for_relocation(ZPageType type, size_t size, 
   return ZHeap::heap()->alloc_page(type, size, flags, _age);
 }
 
-void ZObjectAllocator::undo_alloc_page(ZPage* page) {
+void ZObjectAllocator::undo_alloc_page(ZPage* page, size_t size) {
   // Increment undone bytes
   Atomic::add(_undone.addr(), page->size());
 
-  ZHeap::heap()->undo_alloc_page(page);
+  ZHeap::heap()->undo_alloc_page(page, size);
 }
 
 zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
@@ -118,7 +118,7 @@ zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
         addr = prev_addr;
 
         // Undo new page allocation
-        undo_alloc_page(new_page);
+        undo_alloc_page(new_page, size);
       }
     }
   }
@@ -177,7 +177,7 @@ void ZObjectAllocator::undo_alloc_object_for_relocation(zaddress addr, size_t si
   ZPage* const page = ZHeap::heap()->page(addr);
 
   if (page->is_large()) {
-    undo_alloc_page(page);
+    undo_alloc_page(page, size);
     ZStatInc(ZCounterUndoObjectAllocationSucceeded);
   } else {
     if (page->undo_alloc_object_atomic(addr, size)) {
