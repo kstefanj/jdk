@@ -46,7 +46,7 @@ private:
   ZPage* const* shared_small_page_addr() const;
 
   ZPage* alloc_page(ZPageType type, size_t size, ZAllocationFlags flags);
-  void undo_alloc_page(ZPage* page);
+  void undo_alloc_page(ZPage* page, size_t size);
 
   // Allocate an object in a shared page. Allocate and
   // atomically install a new page if necessary.

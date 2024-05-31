@@ -42,6 +42,7 @@
 #include "gc/z/zUtils.hpp"
 #include "gc/z/zVerify.hpp"
 #include "gc/z/zWorkers.hpp"
+#include "jfr/jfrEvents.hpp"
 #include "logging/log.hpp"
 #include "memory/iterator.hpp"
 #include "memory/metaspaceUtils.hpp"
@@ -233,14 +234,19 @@ ZPage* ZHeap::alloc_page(ZPageType type, size_t size, ZAllocationFlags flags, ZP
   return page;
 }
 
-void ZHeap::undo_alloc_page(ZPage* page) {
+void ZHeap::undo_alloc_page(ZPage* page, size_t size) {
   assert(page->is_allocating(), "Invalid page state");
 
   ZStatInc(ZCounterUndoPageAllocation);
-  log_trace(gc)("Undo page allocation, thread: " PTR_FORMAT " (%s), page: " PTR_FORMAT ", size: " SIZE_FORMAT,
+  log_debug(gc, heap)("Undo page allocation, thread: " PTR_FORMAT " (%s), page: " PTR_FORMAT ", size: " SIZE_FORMAT,
                 p2i(Thread::current()), ZUtils::thread_name(), p2i(page), page->size());
-
+  EventZUndoPageAllocation e;
+  e.set_type((u8) page->type());
+  e.set_size(page->size());
+  e.set_allocation(size);
   free_page(page);
+  e.commit();
+
 }
 
 void ZHeap::free_page(ZPage* page) {

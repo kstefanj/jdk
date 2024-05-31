@@ -103,7 +103,7 @@ public:
 
   // Page allocation
   ZPage* alloc_page(ZPageType type, size_t size, ZAllocationFlags flags, ZPageAge age);
-  void undo_alloc_page(ZPage* page);
+  void undo_alloc_page(ZPage* page, size_t size);
   void free_page(ZPage* page);
   size_t free_empty_pages(const ZArray<ZPage*>* pages);
 
