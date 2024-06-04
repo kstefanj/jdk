@@ -490,14 +490,29 @@ bool ZPageAllocator::is_alloc_allowed(size_t size) const {
   return available >= size;
 }
 
-bool ZPageAllocator::should_cache(size_t page_size) const {
+bool ZPageAllocator::should_cache(ZPage* page) const {
   // Only cache pages that are smaller or equal to a medium page (if in use)
-  return page_size <= MAX2(ZPageSizeSmall, ZPageSizeMedium);
+  if (page->size() > MAX2(ZPageSizeSmall, ZPageSizeMedium)) {
+    return false;
+  }
+
+  // Always cache medium pages
+  if (page->type() == ZPageType::medium) {
+    return true;
+  }
+
+  // For all other pages avoid fragmentation by only caching if below offset
+  if (page->start() > (zoffset) _max_capacity) {
+    log_debug(gc, page)("Not caching page: " PTR_FORMAT " %zuM", untype(page->start()), page->size() / M );
+    return false;
+  }
+
+  return true;
 }
 
 bool ZPageAllocator::use_low_address(ZPageAllocation* allocation) const {
   // Allocate pages that we cache at low addresses
-  return should_cache(allocation->size()) || allocation->flags().low_address();
+  return allocation->size() <= MAX2(ZPageSizeSmall, ZPageSizeMedium) || allocation->flags().low_address();
 }
 
 bool ZPageAllocator::alloc_page_common_inner(ZPageType type, size_t size, ZList<ZPage>* pages, ZPhysicalMemory& pmem) {
@@ -816,7 +831,7 @@ void ZPageAllocator::satisfy_stalled() {
 void ZPageAllocator::maybe_unmap(ZPage* page) {
   // Pages over a certain size are not cached, these are unmapped and
   // later cached as smaller pages.
-  if (!should_cache(page->size())) {
+  if (!should_cache(page)) {
     unmap_page(page);
   }
 }
@@ -825,7 +840,7 @@ void ZPageAllocator::recycle_page(ZPage* page) {
   // Set time when last used
   page->set_last_used();
 
-  if (should_cache(page->size())) {
+  if (should_cache(page)) {
     // Cache non-large pages
     _cache.free_page(page);
   } else {
