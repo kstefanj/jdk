@@ -71,6 +71,9 @@
           "Young generation tenuring threshold, -1 for dynamic computation")\
           range(-1, static_cast<int>(ZPageAgeMax))                          \
                                                                             \
+  product(int, ZVirtualToPhysicalRatio, 16,                                 \
+          "Virtual to physical ratio")                                      \
+                                                                            \
   develop(size_t, ZForceDiscontiguousHeapReservations, 0,                   \
           "The gc will attempt to split the heap reservation into this "    \
           "many reservations, subject to available virtual address space "  \
