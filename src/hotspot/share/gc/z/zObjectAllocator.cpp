@@ -56,11 +56,11 @@ ZPage* const* ZObjectAllocator::shared_small_page_addr() const {
   return _use_per_cpu_shared_small_pages ? _shared_small_page.addr() : _shared_small_page.addr(0);
 }
 
-ZPage* ZObjectAllocator::alloc_page(ZPageType type, size_t size, ZAllocationFlags flags) {
-  ZPage* const page = ZHeap::heap()->alloc_page(type, size, flags, _age);
+ZPage* ZObjectAllocator::alloc_page(ZAllocationRequest* request) {
+  ZPage* const page = ZHeap::heap()->alloc_page(request->type, request->page_size, request->flags, _age);
   if (page != nullptr) {
     // Increment used bytes
-    Atomic::add(_used.addr(), size);
+    Atomic::add(_used.addr(), request->size);
   }
 
   return page;
@@ -78,12 +78,56 @@ void ZObjectAllocator::undo_alloc_page(ZPage* page, size_t size) {
 }
 
 zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
-                                                       ZPageType page_type,
-                                                       size_t page_size,
-                                                       size_t size,
-                                                       ZAllocationFlags flags) {
+                                                       ZAllocationRequest* request) {
   zaddress addr = zaddress::null;
   ZPage* page = Atomic::load_acquire(shared_page);
+
+  if (page != nullptr) {
+    addr = page->alloc_object_atomic(request->size);
+  }
+
+  if (is_null(addr)) {
+    // Allocate new page
+    ZPage* const new_page = alloc_page(request);
+    if (new_page != nullptr) {
+      // Allocate object before installing the new page
+      addr = new_page->alloc_object(request->size);
+
+    retry:
+      // Install new page
+      ZPage* const prev_page = Atomic::cmpxchg(shared_page, page, new_page);
+      if (prev_page != page) {
+        if (prev_page == nullptr) {
+          // Previous page was retired, retry installing the new page
+          page = prev_page;
+          goto retry;
+        }
+
+        // Another page already installed, try allocation there first
+        const zaddress prev_addr = prev_page->alloc_object_atomic(request->size);
+        if (is_null(prev_addr)) {
+          // Allocation failed, retry installing the new page
+          page = prev_page;
+          goto retry;
+        }
+
+        // Allocation succeeded in already installed page
+        addr = prev_addr;
+
+        // Undo new page allocation
+        undo_alloc_page(new_page, request->size);
+      }
+    }
+  }
+
+  return addr;
+}
+
+zaddress ZObjectAllocator::alloc_object_in_shared_medium_page(ZPage** shared_page,
+                                                              ZAllocationRequest* request) {
+  zaddress addr = zaddress::null;
+  ZPage* page = Atomic::load_acquire(shared_page);
+  size_t size = request->size;
 
   if (page != nullptr) {
     addr = page->alloc_object_atomic(size);
@@ -91,7 +135,7 @@ zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
 
   if (is_null(addr)) {
     // Allocate new page
-    ZPage* const new_page = alloc_page(page_type, page_size, flags);
+    ZPage* const new_page = alloc_page(request);
     if (new_page != nullptr) {
       // Allocate object before installing the new page
       addr = new_page->alloc_object(size);
@@ -126,38 +170,44 @@ zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
   return addr;
 }
 
-zaddress ZObjectAllocator::alloc_large_object(size_t size, ZAllocationFlags flags) {
+zaddress ZObjectAllocator::alloc_large_object(ZAllocationRequest* request) {
   zaddress addr = zaddress::null;
 
   // Allocate new large page
-  const size_t page_size = align_up(size, ZGranuleSize);
-  ZPage* const page = alloc_page(ZPageType::large, page_size, flags);
+  request->page_size = align_up(request->size, ZGranuleSize);
+  request->type = ZPageType::large;
+  ZPage* const page = alloc_page(request);
   if (page != nullptr) {
     // Allocate the object
-    addr = page->alloc_object(size);
+    addr = page->alloc_object(request->size);
   }
 
   return addr;
 }
 
-zaddress ZObjectAllocator::alloc_medium_object(size_t size, ZAllocationFlags flags) {
-  return alloc_object_in_shared_page(_shared_medium_page.addr(), ZPageType::medium, ZPageSizeMedium, size, flags);
+zaddress ZObjectAllocator::alloc_medium_object(ZAllocationRequest* request) {
+  request->type = ZPageType::medium;
+  request->page_size = ZPageSizeMedium;
+  return alloc_object_in_shared_medium_page(_shared_medium_page.addr(), request);
 }
 
-zaddress ZObjectAllocator::alloc_small_object(size_t size, ZAllocationFlags flags) {
-  return alloc_object_in_shared_page(shared_small_page_addr(), ZPageType::small, ZPageSizeSmall, size, flags);
+zaddress ZObjectAllocator::alloc_small_object(ZAllocationRequest* request) {
+  request->type = ZPageType::small;
+  request->page_size = ZPageSizeSmall;
+  return alloc_object_in_shared_page(shared_small_page_addr(), request);
 }
 
 zaddress ZObjectAllocator::alloc_object(size_t size, ZAllocationFlags flags) {
+  ZAllocationRequest request(size, flags);
   if (size <= ZObjectSizeLimitSmall) {
     // Small
-    return alloc_small_object(size, flags);
+    return alloc_small_object(&request);
   } else if (size <= ZObjectSizeLimitMedium) {
     // Medium
-    return alloc_medium_object(size, flags);
+    return alloc_medium_object(&request);
   } else {
     // Large
-    return alloc_large_object(size, flags);
+    return alloc_large_object(&request);
   }
 }
 

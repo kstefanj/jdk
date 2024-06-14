@@ -45,20 +45,19 @@ private:
   ZPage** shared_small_page_addr();
   ZPage* const* shared_small_page_addr() const;
 
-  ZPage* alloc_page(ZPageType type, size_t size, ZAllocationFlags flags);
+  ZPage* alloc_page(ZAllocationRequest* request);
   void undo_alloc_page(ZPage* page, size_t size);
 
   // Allocate an object in a shared page. Allocate and
   // atomically install a new page if necessary.
   zaddress alloc_object_in_shared_page(ZPage** shared_page,
-                                       ZPageType page_type,
-                                       size_t page_size,
-                                       size_t size,
-                                       ZAllocationFlags flags);
+                                       ZAllocationRequest* request);
+  zaddress alloc_object_in_shared_medium_page(ZPage** shared_page,
+                                              ZAllocationRequest* request);
 
-  zaddress alloc_large_object(size_t size, ZAllocationFlags flags);
-  zaddress alloc_medium_object(size_t size, ZAllocationFlags flags);
-  zaddress alloc_small_object(size_t size, ZAllocationFlags flags);
+  zaddress alloc_large_object(ZAllocationRequest* request);
+  zaddress alloc_medium_object(ZAllocationRequest* request);
+  zaddress alloc_small_object(ZAllocationRequest* request);
   zaddress alloc_object(size_t size, ZAllocationFlags flags);
 
 public:
