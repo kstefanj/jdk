@@ -224,14 +224,15 @@ void ZHeap::out_of_memory() {
   log_info(gc)("Out Of Memory (%s)", Thread::current()->name());
 }
 
-ZPage* ZHeap::alloc_page(ZPageType type, size_t size, ZAllocationFlags flags, ZPageAge age) {
-  ZPage* const page = _page_allocator.alloc_page(type, size, flags, age);
-  if (page != nullptr) {
+bool ZHeap::alloc_page(ZAllocationRequest* request, ZPageAge age) {
+  bool success = _page_allocator.alloc_page(request, age);
+  if (success) {
+    assert(request->result != nullptr, "invariant");
     // Insert page table entry
-    _page_table.insert(page);
+    _page_table.insert(request->result);
   }
 
-  return page;
+  return success;
 }
 
 void ZHeap::undo_alloc_page(ZPage* page, size_t size) {

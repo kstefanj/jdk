@@ -101,9 +101,7 @@ class ZPageAllocation : public StackObj {
   friend class ZList<ZPageAllocation>;
 
 private:
-  const ZPageType            _type;
-  const size_t               _size;
-  const ZAllocationFlags     _flags;
+  const ZAllocationRequest*  _request;
   const uint32_t             _young_seqnum;
   const uint32_t             _old_seqnum;
   size_t                     _flushed;
@@ -114,10 +112,8 @@ private:
   ZFuture<bool>              _stall_result;
 
 public:
-  ZPageAllocation(ZPageType type, size_t size, ZAllocationFlags flags)
-    : _type(type),
-      _size(size),
-      _flags(flags),
+  ZPageAllocation(ZAllocationRequest* request)
+    : _request(request),
       _young_seqnum(ZGeneration::young()->seqnum()),
       _old_seqnum(ZGeneration::old()->seqnum()),
       _flushed(0),
@@ -128,15 +124,15 @@ public:
       _stall_result() {}
 
   ZPageType type() const {
-    return _type;
+    return _request->type;
   }
 
   size_t size() const {
-    return _size;
+    return _request->page_size;
   }
 
   ZAllocationFlags flags() const {
-    return _flags;
+    return _request->flags;
   }
 
   uint32_t young_seqnum() const {
@@ -184,7 +180,7 @@ public:
   }
 
   bool gc_relocation() const {
-    return _flags.gc_relocation();
+    return _request->flags.gc_relocation();
   }
 };
 
@@ -276,18 +272,22 @@ bool ZPageAllocator::prime_cache(ZWorkers* workers, size_t size) {
   flags.set_non_blocking();
   flags.set_low_address();
 
-  ZPage* const page = alloc_page(ZPageType::large, size, flags, ZPageAge::eden);
-  if (page == nullptr) {
+  ZAllocationRequest request(0, flags);
+  request.page_size = size;
+  request.type = ZPageType::large;
+
+  bool success = alloc_page(&request, ZPageAge::eden);
+  if (!success) {
     return false;
   }
 
   if (AlwaysPreTouch) {
     // Pre-touch page
-    ZPreTouchTask task(&_physical, page->start(), page->end());
+    ZPreTouchTask task(&_physical, request.result->start(), request.result->end());
     workers->run_all(&task);
   }
 
-  free_page(page);
+  free_page(request.result);
 
   return true;
 }
@@ -709,11 +709,11 @@ ZPage* ZPageAllocator::alloc_page_finalize(ZPageAllocation* allocation) {
   return nullptr;
 }
 
-ZPage* ZPageAllocator::alloc_page(ZPageType type, size_t size, ZAllocationFlags flags, ZPageAge age) {
+bool ZPageAllocator::alloc_page(ZAllocationRequest* request, ZPageAge age) {
   EventZPageAllocation event;
 
 retry:
-  ZPageAllocation allocation(type, size, flags);
+  ZPageAllocation allocation(request);
 
   // Allocate one or more pages from the page cache. If the allocation
   // succeeds but the returned pages don't cover the complete allocation,
@@ -721,8 +721,8 @@ retry:
   // directly from the physical memory manager. Note that this call might
   // block in a safepoint if the non-blocking flag is not set.
   if (!alloc_page_or_stall(&allocation)) {
-    // Out of memory
-    return nullptr;
+    // Out of memory or skipped medium allocation
+    return false;
   }
 
   ZPage* const page = alloc_page_finalize(&allocation);
@@ -732,7 +732,7 @@ retry:
     free_pages_alloc_failed(&allocation);
     if (allocation.out_of_va()) {
       // Out of address space no idea to retry
-      return nullptr;
+      return false;
     }
     goto retry;
   }
@@ -741,7 +741,7 @@ retry:
   // to the allocating thread. The overall heap "used" is tracked in
   // the lower-level allocation code.
   const ZGenerationId id = age == ZPageAge::old ? ZGenerationId::old : ZGenerationId::young;
-  increase_used_generation(id, size);
+  increase_used_generation(id, request->page_size);
 
   // Reset page. This updates the page's sequence number and must
   // be done after we potentially blocked in a safepoint (stalled)
@@ -750,18 +750,19 @@ retry:
 
   // Update allocation statistics. Exclude gc relocations to avoid
   // artificial inflation of the allocation rate during relocation.
-  if (!flags.gc_relocation() && is_init_completed()) {
+  if (!request->flags.gc_relocation() && is_init_completed()) {
     // Note that there are two allocation rate counters, which have
     // different purposes and are sampled at different frequencies.
-    ZStatInc(ZCounterMutatorAllocationRate, size);
-    ZStatMutatorAllocRate::sample_allocation(size);
+    ZStatInc(ZCounterMutatorAllocationRate, request->page_size);
+    ZStatMutatorAllocRate::sample_allocation(request->page_size);
   }
 
   // Send event
-  event.commit((u8)type, size, allocation.flushed(), allocation.committed(),
-               page->physical_memory().nsegments(), flags.non_blocking());
+  event.commit((u8)request->type, request->page_size, allocation.flushed(), allocation.committed(),
+               page->physical_memory().nsegments(), request->flags.non_blocking());
 
-  return page;
+  request->result = page;
+  return true;
 }
 
 void ZPageAllocator::satisfy_stalled() {

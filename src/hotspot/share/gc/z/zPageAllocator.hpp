@@ -149,7 +149,7 @@ public:
 
   void reset_statistics(ZGenerationId id);
 
-  ZPage* alloc_page(ZPageType type, size_t size, ZAllocationFlags flags, ZPageAge age);
+  bool alloc_page(ZAllocationRequest* request, ZPageAge age);
   void recycle_page(ZPage* page);
   void safe_destroy_page(ZPage* page);
   void free_page(ZPage* page);

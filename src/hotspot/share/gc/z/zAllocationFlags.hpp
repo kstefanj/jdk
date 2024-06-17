@@ -29,7 +29,6 @@
 #include "memory/allocation.hpp"
 
 class ZPage;
-template <typename T> class ZFuture;
 
 //
 // Allocation flags layout
@@ -91,7 +90,6 @@ struct ZAllocationRequest {
   size_t page_size;
   ZAllocationFlags flags;
   ZPageType type;
-  ZFuture<ZPage*>* wait;
   ZPage* result;
 
   ZAllocationRequest(size_t size, ZAllocationFlags flags) :
@@ -99,7 +97,6 @@ struct ZAllocationRequest {
     page_size(0),
     flags(flags),
     type(),
-    wait(nullptr),
     result(nullptr) { }
 
 };

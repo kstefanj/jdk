@@ -57,17 +57,22 @@ ZPage* const* ZObjectAllocator::shared_small_page_addr() const {
 }
 
 ZPage* ZObjectAllocator::alloc_page(ZAllocationRequest* request) {
-  ZPage* const page = ZHeap::heap()->alloc_page(request->type, request->page_size, request->flags, _age);
-  if (page != nullptr) {
+  bool success = ZHeap::heap()->alloc_page(request, _age);
+  if (success) {
     // Increment used bytes
     Atomic::add(_used.addr(), request->size);
   }
 
-  return page;
+  return request->result;
 }
 
 ZPage* ZObjectAllocator::alloc_page_for_relocation(ZPageType type, size_t size, ZAllocationFlags flags) {
-  return ZHeap::heap()->alloc_page(type, size, flags, _age);
+  ZAllocationRequest request(0, flags);
+  request.page_size = size;
+  request.type = type;
+
+  ZHeap::heap()->alloc_page(&request, _age);
+  return request.result;
 }
 
 void ZObjectAllocator::undo_alloc_page(ZPage* page, size_t size) {
