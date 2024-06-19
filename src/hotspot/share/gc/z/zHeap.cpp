@@ -250,6 +250,11 @@ void ZHeap::undo_alloc_page(ZPage* page, size_t size) {
 
 }
 
+
+void ZHeap::stall_page(ZAllocationRequest* request, ZPageAge age) {
+  _page_allocator.stall_page(request, age);
+}
+
 void ZHeap::free_page(ZPage* page) {
   // Remove page table entry
   _page_table.remove(page);

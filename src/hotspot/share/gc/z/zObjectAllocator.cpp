@@ -46,7 +46,8 @@ ZObjectAllocator::ZObjectAllocator(ZPageAge age)
     _used(0),
     _undone(0),
     _shared_medium_page(nullptr),
-    _shared_small_page(nullptr) {}
+    _shared_small_page(nullptr),
+    _serial(age) {}
 
 ZPage** ZObjectAllocator::shared_small_page_addr() {
   return _use_per_cpu_shared_small_pages ? _shared_small_page.addr() : _shared_small_page.addr(0);
@@ -60,14 +61,14 @@ ZPage* ZObjectAllocator::alloc_page(ZAllocationRequest* request) {
   bool success = ZHeap::heap()->alloc_page(request, _age);
   if (success) {
     // Increment used bytes
-    Atomic::add(_used.addr(), request->size);
+    Atomic::add(_used.addr(), request->page_size);
   }
 
   return request->result;
 }
 
 ZPage* ZObjectAllocator::alloc_page_for_relocation(ZPageType type, size_t size, ZAllocationFlags flags) {
-  ZAllocationRequest request(0, flags);
+  ZAllocationRequest request(0, flags, &_serial);
   request.page_size = size;
   request.type = type;
 
@@ -128,8 +129,86 @@ zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
   return addr;
 }
 
+void ZObjectAllocator::stall_page() {
+  ZAllocationFlags flags;
+  ZAllocationRequest stall(0, flags, nullptr);
+  ZHeap::heap()->stall_page(&stall, _age);
+}
+
+ZMediumSerializer::ZMediumSerializer(ZPageAge age)
+  : _lock(),
+    _count(0),
+    _ticket(0),
+    _stalled(false),
+    _age(age) {}
+
+  // Should caller allocated page
+int ZMediumSerializer::claim_or_wait() {
+  ZLocker<ZConditionLock> locker(&_lock);
+  size_t old_count = Atomic::fetch_then_add(&_count, (size_t) 1);
+  if (old_count == 0) {
+    guarantee(!_stalled, "inf");
+    log_debug(gc,page,alloc)("%2d: Claimed ticket: %zu (%d:%s)", (int) _age, _ticket, Thread::current()->osthread()->thread_id(), Thread::current()->name());
+    return 0;
+  }
+
+  // Never wait if stalled allocation
+  if (Atomic::load_acquire(&_stalled)) {
+    log_debug(gc,page,alloc)("%2d: Stalled ticket: %zu (%d:%s)", (int) _age, _ticket, Thread::current()->osthread()->thread_id(), Thread::current()->name());
+    return 2;
+  }
+
+  guarantee(old_count >= 1, "inv");
+  size_t wait_ticket = Atomic::load_acquire(&_ticket);
+  // Allocator still going
+  log_debug(gc,page,alloc)("%2d: Waiting ticket: %zu (%d:%s)", (int) _age, _ticket, Thread::current()->osthread()->thread_id(), Thread::current()->name());
+  _lock.wait();
+
+  // Woken up
+  if (Atomic::load_acquire(&_ticket) > wait_ticket)  {
+    // page has been installed
+    log_debug(gc,page,alloc)("%2d: Wait complete (done/abort) ticket: %zu->%zu (%d:%s)", (int) _age, wait_ticket, _ticket, Thread::current()->osthread()->thread_id(), Thread::current()->name());
+    return 1;
+  } else {
+    log_debug(gc,page,alloc)("%2d: Wait complete (stalled) ticket: %zu (%d:%s)", (int) _age, wait_ticket, Thread::current()->osthread()->thread_id(), Thread::current()->name());
+    return 2;
+  }
+}
+
+void ZMediumSerializer::notify(bool installed) {
+  if (installed) {
+    log_debug(gc,page,alloc)("%2d: Ticket done: %zu (%d:%s)", (int) _age, Atomic::load(&_ticket), Thread::current()->osthread()->thread_id(), Thread::current()->name());
+  } else {
+    log_debug(gc,page,alloc)("%2d: Ticket aborted: %zu (%d:%s)", (int) _age, Atomic::load(&_ticket), Thread::current()->osthread()->thread_id(), Thread::current()->name());
+  }
+
+  Atomic::inc(&_ticket);
+  Atomic::release_store(&_count, (size_t) 0);
+  Atomic::release_store(&_stalled, false);
+  _lock.notify_all();
+}
+
+void ZMediumSerializer::install(ZPage** location, ZPage* page) {
+  ZLocker<ZConditionLock> locker(&_lock);
+  Atomic::store(location, page);
+  notify(true);
+}
+
+void ZMediumSerializer::abort() {
+  ZLocker<ZConditionLock> locker(&_lock);
+  notify(false);
+}
+
+void ZMediumSerializer::set_stalled(bool val) {
+  ZLocker<ZConditionLock> locker(&_lock);
+  log_debug(gc,page,alloc)("%2d: Ticket stalled: %zu (%d:%s)", (int) _age, Atomic::load(&_ticket), Thread::current()->osthread()->thread_id(), Thread::current()->name());
+  Atomic::release_store(&_stalled, val);
+  _lock.notify_all();
+}
+
 zaddress ZObjectAllocator::alloc_object_in_shared_medium_page(ZPage** shared_page,
                                                               ZAllocationRequest* request) {
+restart:
   zaddress addr = zaddress::null;
   ZPage* page = Atomic::load_acquire(shared_page);
   size_t size = request->size;
@@ -139,36 +218,32 @@ zaddress ZObjectAllocator::alloc_object_in_shared_medium_page(ZPage** shared_pag
   }
 
   if (is_null(addr)) {
-    // Allocate new page
-    ZPage* const new_page = alloc_page(request);
+    ZPage* new_page = nullptr;
+    int claimed = _serial.claim_or_wait();
+    if (claimed == 0) {
+      // Allocate new page
+      new_page = alloc_page(request);
+      if (new_page == nullptr) {
+        // Allocation failed, notify waiters
+        _serial.abort();
+      }
+    } else {
+      if (claimed == 1) {
+        // Wait successful, new page installed,
+        goto restart;
+      } else {
+        // Wait done, but stalled allocation
+        stall_page();
+        goto restart;
+      }
+    }
+
     if (new_page != nullptr) {
       // Allocate object before installing the new page
       addr = new_page->alloc_object(size);
 
-    retry:
-      // Install new page
-      ZPage* const prev_page = Atomic::cmpxchg(shared_page, page, new_page);
-      if (prev_page != page) {
-        if (prev_page == nullptr) {
-          // Previous page was retired, retry installing the new page
-          page = prev_page;
-          goto retry;
-        }
-
-        // Another page already installed, try allocation there first
-        const zaddress prev_addr = prev_page->alloc_object_atomic(size);
-        if (is_null(prev_addr)) {
-          // Allocation failed, retry installing the new page
-          page = prev_page;
-          goto retry;
-        }
-
-        // Allocation succeeded in already installed page
-        addr = prev_addr;
-
-        // Undo new page allocation
-        undo_alloc_page(new_page, size);
-      }
+      // Install new page, this notifies the waiters
+      _serial.install(shared_page, new_page);
     }
   }
 
@@ -203,7 +278,7 @@ zaddress ZObjectAllocator::alloc_small_object(ZAllocationRequest* request) {
 }
 
 zaddress ZObjectAllocator::alloc_object(size_t size, ZAllocationFlags flags) {
-  ZAllocationRequest request(size, flags);
+  ZAllocationRequest request(size, flags, &_serial);
   if (size <= ZObjectSizeLimitSmall) {
     // Small
     return alloc_small_object(&request);

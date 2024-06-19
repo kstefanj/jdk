@@ -26,12 +26,38 @@
 
 #include "gc/z/zAddress.hpp"
 #include "gc/z/zAllocationFlags.hpp"
+#include "gc/z/zLock.hpp"
 #include "gc/z/zPageAge.hpp"
 #include "gc/z/zPageType.hpp"
 #include "gc/z/zValue.hpp"
 
 class ZPage;
 class ZPageTable;
+
+class ZMediumSerializer {
+private:
+  ZConditionLock _lock;
+  volatile size_t _count;
+  volatile size_t _ticket;
+  volatile bool   _stalled;
+  ZPageAge        _age;
+
+public:
+  ZMediumSerializer(ZPageAge age);
+
+  void install(ZPage** location, ZPage* page);
+  void abort();
+
+  // When claim is successful (0), the caller should allocated a new page
+  // otherwise it should wait for someone else to do it.
+  // Wait for a page allocation to happen, once notifited the
+  // page might be installed (1). If 2 is returned
+  // a allocation stall happened and we need to stall ourselves
+  // to ensure progress.
+  int claim_or_wait();
+  void notify(bool installed);
+  void set_stalled(bool val);
+};
 
 class ZObjectAllocator {
 private:
@@ -41,12 +67,14 @@ private:
   ZPerCPU<size_t>    _undone;
   ZContended<ZPage*> _shared_medium_page;
   ZPerCPU<ZPage*>    _shared_small_page;
+  ZMediumSerializer  _serial;
 
   ZPage** shared_small_page_addr();
   ZPage* const* shared_small_page_addr() const;
 
   ZPage* alloc_page(ZAllocationRequest* request);
   void undo_alloc_page(ZPage* page, size_t size);
+  void stall_page();
 
   // Allocate an object in a shared page. Allocate and
   // atomically install a new page if necessary.

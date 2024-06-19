@@ -31,6 +31,7 @@
 #include "gc/z/zGenerationId.hpp"
 #include "gc/z/zGlobals.hpp"
 #include "gc/z/zLock.inline.hpp"
+#include "gc/z/zObjectAllocator.hpp"
 #include "gc/z/zPage.inline.hpp"
 #include "gc/z/zPageAge.hpp"
 #include "gc/z/zPageAllocator.inline.hpp"
@@ -101,7 +102,7 @@ class ZPageAllocation : public StackObj {
   friend class ZList<ZPageAllocation>;
 
 private:
-  const ZAllocationRequest*  _request;
+  ZAllocationRequest*        _request;
   const uint32_t             _young_seqnum;
   const uint32_t             _old_seqnum;
   size_t                     _flushed;
@@ -181,6 +182,10 @@ public:
 
   bool gc_relocation() const {
     return _request->flags.gc_relocation();
+  }
+
+  ZMediumSerializer* serial() {
+    return _request->serial;
   }
 };
 
@@ -272,7 +277,7 @@ bool ZPageAllocator::prime_cache(ZWorkers* workers, size_t size) {
   flags.set_non_blocking();
   flags.set_low_address();
 
-  ZAllocationRequest request(0, flags);
+  ZAllocationRequest request(0, flags, nullptr);
   request.page_size = size;
   request.type = ZPageType::large;
 
@@ -537,6 +542,12 @@ bool ZPageAllocator::alloc_page_stall(ZPageAllocation* allocation) {
   // We can only block if the VM is fully initialized
   check_out_of_memory_during_initialization();
 
+  // Special treat medium stalls
+  if (allocation->type() == ZPageType::medium) {
+    // Notify any waiters that this request will stall
+    allocation->serial()->set_stalled(true);
+  }
+
   // Start asynchronous minor GC
   const ZDriverRequest request(GCCause::_z_allocation_stall, ZYoungGCThreads, 0);
   ZDriver::minor()->collect(request);
@@ -709,6 +720,15 @@ ZPage* ZPageAllocator::alloc_page_finalize(ZPageAllocation* allocation) {
   return nullptr;
 }
 
+void ZPageAllocator::stall_page(ZAllocationRequest* request, ZPageAge age) {
+  ZPageAllocation no_allocation(request);
+  {
+      ZLocker<ZLock> locker(&_lock);
+      _stalled.insert_last(&no_allocation);
+  }
+  no_allocation.wait();
+}
+
 bool ZPageAllocator::alloc_page(ZAllocationRequest* request, ZPageAge age) {
   EventZPageAllocation event;
 
@@ -773,7 +793,9 @@ void ZPageAllocator::satisfy_stalled() {
       return;
     }
 
-    if (!alloc_page_common(allocation)) {
+    if (allocation->size() == 0) {
+      // Fake request nothing to do
+    } else if (!alloc_page_common(allocation)) {
       // Allocation could not be satisfied, give up
       return;
     }

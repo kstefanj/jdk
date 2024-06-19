@@ -104,6 +104,7 @@ public:
   // Page allocation
   bool alloc_page(ZAllocationRequest* request, ZPageAge age);
   void undo_alloc_page(ZPage* page, size_t size);
+  void stall_page(ZAllocationRequest* request, ZPageAge age);
   void free_page(ZPage* page);
   size_t free_empty_pages(const ZArray<ZPage*>* pages);
 

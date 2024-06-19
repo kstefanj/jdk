@@ -28,6 +28,7 @@
 #include "gc/z/zPageType.hpp"
 #include "memory/allocation.hpp"
 
+class ZMediumSerializer;
 class ZPage;
 
 //
@@ -90,13 +91,15 @@ struct ZAllocationRequest {
   size_t page_size;
   ZAllocationFlags flags;
   ZPageType type;
+  ZMediumSerializer* serial;
   ZPage* result;
 
-  ZAllocationRequest(size_t size, ZAllocationFlags flags) :
+  ZAllocationRequest(size_t size, ZAllocationFlags flags, ZMediumSerializer* serial) :
     size(size),
     page_size(0),
     flags(flags),
     type(),
+    serial(serial),
     result(nullptr) { }
 
 };
