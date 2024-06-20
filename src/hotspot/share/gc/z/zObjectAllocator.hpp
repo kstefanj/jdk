@@ -47,16 +47,11 @@ public:
 
   void install(ZPage** location, ZPage* page);
   void abort();
+  void complete_ticket();
 
-  // When claim is successful (0), the caller should allocated a new page
-  // otherwise it should wait for someone else to do it.
-  // Wait for a page allocation to happen, once notifited the
-  // page might be installed (1). If 2 is returned
-  // a allocation stall happened and we need to stall ourselves
-  // to ensure progress.
-  int claim_or_wait();
-  void notify(bool installed);
-  void set_stalled(bool val);
+  bool claim(size_t* ticket);
+  bool wait(size_t ticket);
+  void notify_stalled();
 };
 
 class ZObjectAllocator {

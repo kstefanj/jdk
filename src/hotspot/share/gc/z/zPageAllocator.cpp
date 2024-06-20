@@ -545,7 +545,7 @@ bool ZPageAllocator::alloc_page_stall(ZPageAllocation* allocation) {
   // Special treat medium stalls
   if (allocation->type() == ZPageType::medium) {
     // Notify any waiters that this request will stall
-    allocation->serial()->set_stalled(true);
+    allocation->serial()->notify_stalled();
   }
 
   // Start asynchronous minor GC

@@ -138,71 +138,70 @@ void ZObjectAllocator::stall_page() {
 ZMediumSerializer::ZMediumSerializer(ZPageAge age)
   : _lock(),
     _count(0),
-    _ticket(0),
+    _ticket(1),
     _stalled(false),
     _age(age) {}
 
   // Should caller allocated page
-int ZMediumSerializer::claim_or_wait() {
+bool ZMediumSerializer::claim(size_t *ticket) {
   ZLocker<ZConditionLock> locker(&_lock);
+
+  // Add to the count, first one gets the claim.
   size_t old_count = Atomic::fetch_then_add(&_count, (size_t) 1);
   if (old_count == 0) {
-    guarantee(!_stalled, "inf");
-    log_debug(gc,page,alloc)("%2d: Claimed ticket: %zu (%d:%s)", (int) _age, _ticket, Thread::current()->osthread()->thread_id(), Thread::current()->name());
-    return 0;
+    guarantee(!_stalled, "Thread claiming the current ticket should not see a stalled state");
+    return true;
+  }
+  *ticket = Atomic::load(&_ticket);
+  return false;
+}
+
+bool ZMediumSerializer::wait(size_t ticket) {
+  ZLocker<ZConditionLock> locker(&_lock);
+  if (Atomic::load(&_ticket) > ticket) {
+    // Ticket already completeded
+    return true;
   }
 
-  // Never wait if stalled allocation
-  if (Atomic::load_acquire(&_stalled)) {
-    log_debug(gc,page,alloc)("%2d: Stalled ticket: %zu (%d:%s)", (int) _age, _ticket, Thread::current()->osthread()->thread_id(), Thread::current()->name());
-    return 2;
+  // If current allocation is stalled, just stall this thread as well
+  if (Atomic::load(&_stalled)) {
+    return false;
   }
 
-  guarantee(old_count >= 1, "inv");
-  size_t wait_ticket = Atomic::load_acquire(&_ticket);
-  // Allocator still going
-  log_debug(gc,page,alloc)("%2d: Waiting ticket: %zu (%d:%s)", (int) _age, _ticket, Thread::current()->osthread()->thread_id(), Thread::current()->name());
+  // Wait for allocating thread to complete page allocation for this ticket
   _lock.wait();
 
-  // Woken up
-  if (Atomic::load_acquire(&_ticket) > wait_ticket)  {
-    // page has been installed
-    log_debug(gc,page,alloc)("%2d: Wait complete (done/abort) ticket: %zu->%zu (%d:%s)", (int) _age, wait_ticket, _ticket, Thread::current()->osthread()->thread_id(), Thread::current()->name());
-    return 1;
+  if (Atomic::load(&_ticket) > ticket)  {
+    // Ticket completed, either done or allocation failed
+    return true;
   } else {
-    log_debug(gc,page,alloc)("%2d: Wait complete (stalled) ticket: %zu (%d:%s)", (int) _age, wait_ticket, Thread::current()->osthread()->thread_id(), Thread::current()->name());
-    return 2;
+    guarantee(_stalled, "should be stalled");
+    return false;
   }
 }
 
-void ZMediumSerializer::notify(bool installed) {
-  if (installed) {
-    log_debug(gc,page,alloc)("%2d: Ticket done: %zu (%d:%s)", (int) _age, Atomic::load(&_ticket), Thread::current()->osthread()->thread_id(), Thread::current()->name());
-  } else {
-    log_debug(gc,page,alloc)("%2d: Ticket aborted: %zu (%d:%s)", (int) _age, Atomic::load(&_ticket), Thread::current()->osthread()->thread_id(), Thread::current()->name());
-  }
-
+void ZMediumSerializer::complete_ticket() {
   Atomic::inc(&_ticket);
-  Atomic::release_store(&_count, (size_t) 0);
-  Atomic::release_store(&_stalled, false);
-  _lock.notify_all();
+  Atomic::store(&_count, (size_t) 0);
+  Atomic::store(&_stalled, false);
 }
 
 void ZMediumSerializer::install(ZPage** location, ZPage* page) {
   ZLocker<ZConditionLock> locker(&_lock);
   Atomic::store(location, page);
-  notify(true);
+  complete_ticket();
+  _lock.notify_all();
 }
 
 void ZMediumSerializer::abort() {
   ZLocker<ZConditionLock> locker(&_lock);
-  notify(false);
+  complete_ticket();
+  _lock.notify_all();
 }
 
-void ZMediumSerializer::set_stalled(bool val) {
+void ZMediumSerializer::notify_stalled() {
   ZLocker<ZConditionLock> locker(&_lock);
-  log_debug(gc,page,alloc)("%2d: Ticket stalled: %zu (%d:%s)", (int) _age, Atomic::load(&_ticket), Thread::current()->osthread()->thread_id(), Thread::current()->name());
-  Atomic::release_store(&_stalled, val);
+  Atomic::store(&_stalled, true);
   _lock.notify_all();
 }
 
@@ -218,32 +217,30 @@ restart:
   }
 
   if (is_null(addr)) {
-    ZPage* new_page = nullptr;
-    int claimed = _serial.claim_or_wait();
-    if (claimed == 0) {
-      // Allocate new page
-      new_page = alloc_page(request);
+    size_t ticket = 0;
+    if (_serial.claim(&ticket)) {
+      // Claim successful, do allocation
+      ZPage* new_page = alloc_page(request);
       if (new_page == nullptr) {
         // Allocation failed, notify waiters
         _serial.abort();
+        return addr;
       }
-    } else {
-      if (claimed == 1) {
-        // Wait successful, new page installed,
-        goto restart;
-      } else {
-        // Wait done, but stalled allocation
-        stall_page();
-        goto restart;
-      }
-    }
 
-    if (new_page != nullptr) {
       // Allocate object before installing the new page
       addr = new_page->alloc_object(size);
 
-      // Install new page, this notifies the waiters
+      // Install new page and notify the waiters
       _serial.install(shared_page, new_page);
+    } else {
+      // Wait for this ticket to complete
+      bool completed = _serial.wait(ticket);
+      if(!completed) {
+        // Notified but allocation stalled, stall this request as well
+        stall_page();
+      }
+      // Now there should be a new page ready
+      goto restart;
     }
   }
 
