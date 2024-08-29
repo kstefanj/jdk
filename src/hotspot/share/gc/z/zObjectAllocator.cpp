@@ -64,13 +64,34 @@ void ZMediumPageSynchronizer::notify_waiters() {
   _lock.notify_all();
 }
 
+class ZWaiter {
+  friend class ZList<ZWaiter>;
+private:
+  ZFuture<bool>      _future;
+  ZListNode<ZWaiter> _node;
+
+public:
+ ZWaiter()
+  : _future(),
+    _node() {}
+
+  void notify() {
+    _future.set(true);
+  }
+
+  void wait() {
+    _future.get();
+  }
+};
+
+
 // Eden page allocations might stall so we need a waiting mechanism that
 // can handle safepointing. All waiters will put a ZFuture on the _waiters
 // list and be notified when the allocation is done. Very similar to how
 // the actual allocation stalls are handled.
 class ZMediumEdenPageSynchronizer : public ZMediumPageSynchronizer {
 private:
-  ZList<ZFuture<bool>> _waiters;
+  ZList<ZWaiter> _waiters;
 
 public:
   ZMediumEdenPageSynchronizer()
@@ -78,7 +99,7 @@ public:
       _waiters() {}
 
   bool claim_or_wait() {
-    ZFuture<bool> wait;
+    ZWaiter waiter;
 
     {
       ZLocker<ZConditionLock> locker(&_lock);
@@ -90,19 +111,20 @@ public:
       }
 
       // Put this future on the waiters list
-      _waiters.insert_last(&wait);
+      _waiters.insert_last(&waiter);
     }
 
-    wait.get();
+    waiter.wait();
     return false;
   }
 
   void notify_waiters() {
     ZLocker<ZConditionLock> locker(&_lock);
     Atomic::store(&_is_allocating, false);
-    ZListRemoveIterator<ZFuture<bool>> iter(&_waiters);
-    for (ZFuture<bool>* waiter; iter.next(&waiter);) {
-      waiter->set(true);
+
+    ZListRemoveIterator<ZWaiter> iter(&_waiters);
+    for (ZWaiter* waiter; iter.next(&waiter);) {
+      waiter->notify();
     }
   }
 };
