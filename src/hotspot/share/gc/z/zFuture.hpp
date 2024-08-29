@@ -26,12 +26,16 @@
 
 #include "memory/allocation.hpp"
 #include "runtime/semaphore.hpp"
+#include "gc/z/zList.hpp"
 
 template <typename T>
 class ZFuture {
+  friend class ZList<ZFuture<T>>;
+
 private:
   Semaphore _sema;
   T         _value;
+  ZListNode<ZFuture<T>> _node;
 
 public:
   ZFuture();

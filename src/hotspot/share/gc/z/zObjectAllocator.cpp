@@ -22,6 +22,7 @@
  */
 
 #include "precompiled.hpp"
+#include "gc/z/zFuture.inline.hpp"
 #include "gc/z/zGlobals.hpp"
 #include "gc/z/zHeap.inline.hpp"
 #include "gc/z/zHeuristics.hpp"
@@ -40,13 +41,82 @@
 static const ZStatCounter ZCounterUndoObjectAllocationSucceeded("Memory", "Undo Object Allocation Succeeded", ZStatUnitOpsPerSecond);
 static const ZStatCounter ZCounterUndoObjectAllocationFailed("Memory", "Undo Object Allocation Failed", ZStatUnitOpsPerSecond);
 
+ZMediumPageSynchronizer::ZMediumPageSynchronizer()
+  : _lock(),
+    _is_allocating(false) {}
+
+bool ZMediumPageSynchronizer::claim_or_wait() {
+  ZLocker<ZConditionLock> locker(&_lock);
+
+  if (!Atomic::load(&_is_allocating)) {
+    Atomic::store(&_is_allocating, true);
+    return true;
+  }
+
+  // Allocation handled by another thread, wait for it
+  _lock.wait();
+  return false;
+}
+
+void ZMediumPageSynchronizer::notify_waiters() {
+  ZLocker<ZConditionLock> locker(&_lock);
+  Atomic::store(&_is_allocating, false);
+  _lock.notify_all();
+}
+
+// Eden page allocations might stall so we need a waiting mechanism that
+// can handle safepointing. All waiters will put a ZFuture on the _waiters
+// list and be notified when the allocation is done. Very similar to how
+// the actual allocation stalls are handled.
+class ZMediumEdenPageSynchronizer : public ZMediumPageSynchronizer {
+private:
+  ZList<ZFuture<bool>> _waiters;
+
+public:
+  ZMediumEdenPageSynchronizer()
+    : ZMediumPageSynchronizer(),
+      _waiters() {}
+
+  bool claim_or_wait() {
+    ZFuture<bool> wait;
+
+    {
+      ZLocker<ZConditionLock> locker(&_lock);
+
+      if (!Atomic::load(&_is_allocating)) {
+        // This thread should allocate
+        Atomic::store(&_is_allocating, true);
+        return true;
+      }
+
+      // Put this future on the waiters list
+      _waiters.insert_last(&wait);
+    }
+
+    wait.get();
+    return false;
+  }
+
+  void notify_waiters() {
+    ZLocker<ZConditionLock> locker(&_lock);
+    Atomic::store(&_is_allocating, false);
+    ZListRemoveIterator<ZFuture<bool>> iter(&_waiters);
+    for (ZFuture<bool>* waiter; iter.next(&waiter);) {
+      waiter->set(true);
+    }
+  }
+};
+
 ZObjectAllocator::ZObjectAllocator(ZPageAge age)
   : _age(age),
     _use_per_cpu_shared_small_pages(ZHeuristics::use_per_cpu_shared_small_pages()),
     _used(0),
     _undone(0),
     _shared_medium_page(nullptr),
-    _shared_small_page(nullptr) {}
+    _shared_small_page(nullptr),
+    _medium_page_synchronizer(_age == ZPageAge::eden ?
+                              new ZMediumEdenPageSynchronizer() :
+                              new ZMediumPageSynchronizer()) {}
 
 ZPage** ZObjectAllocator::shared_small_page_addr() {
   return _use_per_cpu_shared_small_pages ? _shared_small_page.addr() : _shared_small_page.addr(0);
@@ -126,6 +196,48 @@ zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
   return addr;
 }
 
+zaddress ZObjectAllocator::alloc_object_in_medium_page(ZPageType page_type,
+                                                       size_t page_size,
+                                                       size_t size,
+                                                       ZAllocationFlags flags) {
+  ZPage** shared_page = _shared_medium_page.addr();
+retry:
+  zaddress addr = zaddress::null;
+  ZPage* page = Atomic::load_acquire(shared_page);
+
+  if (page != nullptr) {
+    addr = page->alloc_object_atomic(size);
+  }
+
+  if (is_null(addr)) {
+    // New medium page needed
+    if (_medium_page_synchronizer->claim_or_wait()) {
+      // Make sure a new page has not already been installed
+      if (page != Atomic::load_acquire(shared_page)) {
+        // New page available, reset state and notify
+        _medium_page_synchronizer->notify_waiters();
+        goto retry;
+      }
+
+      // Allocate new page
+      ZPage* const new_page = alloc_page(page_type, page_size, flags);
+      if (new_page != nullptr) {
+        // Allocate object before installing the new page
+        addr = new_page->alloc_object(size);
+      }
+
+      // Install new page
+      Atomic::release_store(shared_page, new_page);
+      _medium_page_synchronizer->notify_waiters();
+    } else {
+      // Someone else allocated and installed a new page
+      goto retry;
+    }
+  }
+
+  return addr;
+}
+
 zaddress ZObjectAllocator::alloc_large_object(size_t size, ZAllocationFlags flags) {
   zaddress addr = zaddress::null;
 
@@ -141,7 +253,7 @@ zaddress ZObjectAllocator::alloc_large_object(size_t size, ZAllocationFlags flag
 }
 
 zaddress ZObjectAllocator::alloc_medium_object(size_t size, ZAllocationFlags flags) {
-  return alloc_object_in_shared_page(_shared_medium_page.addr(), ZPageType::medium, ZPageSizeMedium, size, flags);
+  return alloc_object_in_medium_page(ZPageType::medium, ZPageSizeMedium, size, flags);
 }
 
 zaddress ZObjectAllocator::alloc_small_object(size_t size, ZAllocationFlags flags) {
