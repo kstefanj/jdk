@@ -93,7 +93,7 @@ public:
 class ZMediumPageSynchronizer : public CHeapObj<mtGC> {
 protected:
   ZConditionLock _lock;
-  volatile bool  _is_allocating;
+  volatile bool  _claimed;
 
 public:
   ZMediumPageSynchronizer();

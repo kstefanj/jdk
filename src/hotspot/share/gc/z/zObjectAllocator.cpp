@@ -43,27 +43,29 @@ static const ZStatCounter ZCounterUndoObjectAllocationFailed("Memory", "Undo Obj
 
 ZMediumPageSynchronizer::ZMediumPageSynchronizer()
   : _lock(),
-    _is_allocating(false) {}
+    _claimed(false) {}
 
 bool ZMediumPageSynchronizer::claim_or_wait() {
   ZLocker<ZConditionLock> locker(&_lock);
 
-  if (!Atomic::load(&_is_allocating)) {
-    Atomic::store(&_is_allocating, true);
+  if (!Atomic::load(&_claimed)) {
+    Atomic::store(&_claimed, true);
     return true;
   }
 
-  // Allocation handled by another thread, wait for it
+  // Already claimed, allocation handled by another thread, wait for it
   _lock.wait();
   return false;
 }
 
 void ZMediumPageSynchronizer::notify_waiters() {
   ZLocker<ZConditionLock> locker(&_lock);
-  Atomic::store(&_is_allocating, false);
+  Atomic::store(&_claimed, false);
   _lock.notify_all();
 }
 
+// Wrapper around ZFuture to use it as wait/notify object that
+// can be added to a list.
 class ZWaiter {
   friend class ZList<ZWaiter>;
 private:
@@ -84,11 +86,10 @@ public:
   }
 };
 
-
-// Eden page allocations might stall so we need a waiting mechanism that
-// can handle safepointing. All waiters will put a ZFuture on the _waiters
-// list and be notified when the allocation is done. Very similar to how
-// the actual allocation stalls are handled.
+// A specialized ZMediumPageSynchronizer for Eden pages. Since this type of
+// page allocations can stall, we need a waiting mechanism that is safepoint-
+// aware. All waiter will put a ZWaiter of the _waiters list. Once the page
+// allocation has been satisfied all waiters will be notified.
 class ZMediumEdenPageSynchronizer : public ZMediumPageSynchronizer {
 private:
   ZList<ZWaiter> _waiters;
@@ -104,13 +105,13 @@ public:
     {
       ZLocker<ZConditionLock> locker(&_lock);
 
-      if (!Atomic::load(&_is_allocating)) {
-        // This thread should allocate
-        Atomic::store(&_is_allocating, true);
+      if (!Atomic::load(&_claimed)) {
+        Atomic::store(&_claimed, true);
         return true;
       }
 
-      // Put this future on the waiters list
+      // Already claimed, allocation handled by another thread. Add
+      // the ZWaiter while holding the lock.
       _waiters.insert_last(&waiter);
     }
 
@@ -120,7 +121,7 @@ public:
 
   void notify_waiters() {
     ZLocker<ZConditionLock> locker(&_lock);
-    Atomic::store(&_is_allocating, false);
+    Atomic::store(&_claimed, false);
 
     ZListRemoveIterator<ZWaiter> iter(&_waiters);
     for (ZWaiter* waiter; iter.next(&waiter);) {
