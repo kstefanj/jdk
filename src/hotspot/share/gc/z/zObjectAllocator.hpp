@@ -30,9 +30,7 @@
 #include "gc/z/zPageAge.hpp"
 #include "gc/z/zPageType.hpp"
 #include "gc/z/zValue.hpp"
-#include "memory/allocation.hpp"
 
-class ZMediumPageSynchronizer;
 class ZPage;
 class ZPageTable;
 
@@ -42,9 +40,9 @@ private:
   const bool         _use_per_cpu_shared_small_pages;
   ZPerCPU<size_t>    _used;
   ZPerCPU<size_t>    _undone;
-  ZContended<ZPage*> _shared_medium_page;
   ZPerCPU<ZPage*>    _shared_small_page;
-  ZMediumPageSynchronizer* _medium_page_synchronizer;
+  ZContended<ZPage*> _shared_medium_page;
+  ZConditionLock     _medium_page_alloc_lock;
 
   ZPage** shared_small_page_addr();
   ZPage* const* shared_small_page_addr() const;
@@ -69,6 +67,7 @@ private:
   zaddress alloc_medium_object(size_t size, ZAllocationFlags flags);
   zaddress alloc_small_object(size_t size, ZAllocationFlags flags);
   zaddress alloc_object(size_t size, ZAllocationFlags flags);
+  zaddress alloc_object_in_page_atomic(ZPage* page, size_t size);
 
 public:
   ZObjectAllocator(ZPageAge age);
@@ -88,17 +87,6 @@ public:
   size_t remaining() const;
 
   void retire_pages();
-};
-
-class ZMediumPageSynchronizer : public CHeapObj<mtGC> {
-protected:
-  ZConditionLock _lock;
-  volatile bool  _claimed;
-
-public:
-  ZMediumPageSynchronizer();
-  virtual bool claim_or_wait();
-  virtual void notify_waiters();
 };
 
 #endif // SHARE_GC_Z_ZOBJECTALLOCATOR_HPP
