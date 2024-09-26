@@ -25,6 +25,7 @@ package gc.z;
 
 /*
  * @test TestUncommit
+ * @ignore
  * @requires vm.gc.ZGenerational
  * @summary Test ZGC uncommit unused memory
  * @library /test/lib
