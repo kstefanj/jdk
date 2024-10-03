@@ -362,7 +362,7 @@ bool ZPhysicalMemoryManager::commit(ZPhysicalMemory& pmem) {
 }
 
 bool ZPhysicalMemoryManager::uncommit(ZPhysicalMemory& pmem) {
-  // Commit segments
+  // Uncommit segments
   for (int i = 0; i < pmem.nsegments(); i++) {
     const ZPhysicalMemorySegment& segment = pmem.segment(i);
     if (!segment.is_committed()) {
@@ -378,7 +378,7 @@ bool ZPhysicalMemoryManager::uncommit(ZPhysicalMemory& pmem) {
       ZNMT::uncommit(segment.start(), uncommitted);
     }
 
-    // Deregister uncommitted segment
+    // Unregister uncommitted segment
     if (!pmem.uncommit_segment(i, uncommitted)) {
       // Failed or partially failed
       return false;
