@@ -423,9 +423,7 @@ void ZPageAllocator::promote_used(size_t size) {
 
 void ZPageAllocator::unmap_and_uncommit_mapped(ZMappedMemory& mapped) {
   unmap_mapped(mapped);
-  // TODO: Rework
-  ZPhysicalMemory m = mapped.physical_memory();
-  _physical.uncommit(m);
+  _physical.uncommit(mapped.physical_memory());
 }
 
 void ZPageAllocator::unmap_mapped(const ZMappedMemory& mapped) {
