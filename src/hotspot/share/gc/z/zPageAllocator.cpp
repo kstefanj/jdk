@@ -493,7 +493,7 @@ bool ZPageAllocator::is_alloc_allowed(size_t size) const {
 
 void ZPageAllocator::alloc_memory_mapped_cache(ZPageType type, size_t size, ZArray<ZMappedMemory>* mappings) {
   // Try allocate a contiguous range
-  ZMappedMemory mapping = _mapped_cache.remove_mapped_contiguous(size);
+  ZMappedMemory mapping = _mapped_cache.remove_mapping_contiguous(size);
   if (!mapping.is_null()) {
     mappings->append(mapping);
     // Finished
@@ -510,7 +510,7 @@ void ZPageAllocator::alloc_memory_mapped_cache(ZPageType type, size_t size, ZArr
     // Could not increase capacity enough to satisfy the allocation completely.
     // Try removing multiple ranges from the mapped cache.
     const size_t remaining = size - increased;
-    _mapped_cache.remove_mapped(mappings, remaining);
+    _mapped_cache.remove_mappings(mappings, remaining);
   }
 }
 
@@ -792,7 +792,7 @@ void ZPageAllocator::free_page(ZPage* page, bool allow_defragment) {
   decrease_used_generation(generation_id, size);
 
   // Free mapped memory
-  _mapped_cache.free_mapped(mapping);
+  _mapped_cache.free_mapping(mapping);
 
   // Try satisfy stalled allocations
   satisfy_stalled();
@@ -834,7 +834,7 @@ void ZPageAllocator::free_pages(const ZArray<ZPage*>* pages) {
   // Free mappings
   ZArrayIterator<ZMappedMemory> iter(&to_free_mappings);
   for (ZMappedMemory mapping; iter.next(&mapping);) {
-    _mapped_cache.free_mapped(mapping);
+    _mapped_cache.free_mapping(mapping);
   }
 
   // Try satisfy stalled allocations
@@ -854,7 +854,7 @@ void ZPageAllocator::free_mapped_alloc_failed(ZPageAllocation* allocation) {
   ZArrayIterator<ZMappedMemory> iter(allocation->mappings());
   for (ZMappedMemory mapping; iter.next(&mapping);) {
     freed += mapping.size();
-    _mapped_cache.free_mapped(mapping);
+    _mapped_cache.free_mapping(mapping);
   }
 
   // Adjust capacity and used to reflect the failed capacity increase
