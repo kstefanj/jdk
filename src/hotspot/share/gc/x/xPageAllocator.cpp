@@ -694,8 +694,7 @@ retry:
   }
 
   // Send event
-  event.commit(type, size, allocation.flushed(), allocation.committed(),
-               page->physical_memory().nsegments(), flags.non_blocking());
+  // event.commit(type, size, allocation.flushed(), allocation.committed(), page->physical_memory().nsegments(), flags.non_blocking());
 
   return page;
 }
