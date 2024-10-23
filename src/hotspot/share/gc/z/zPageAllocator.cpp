@@ -455,6 +455,9 @@ ZMappedMemory ZPageAllocator::map_memory(const ZVirtualMemory& vmem, const ZPhys
 void ZPageAllocator::unmap_mapping(const ZMappedMemory& mapping) {
   // Unmap physical memory
   _physical.unmap(mapping.start(), mapping.size());
+
+  // Free virtual memory
+  _virtual.free(mapping.virtual_memory());
 }
 
 void ZPageAllocator::safe_destroy_page(ZPage* page) {
@@ -471,9 +474,6 @@ void ZPageAllocator::unmap_uncommit_free_mapping(ZMappedMemory& mapping) {
 }
 
 void ZPageAllocator::free_mapping(const ZMappedMemory& mapping) {
-  // Free virtual memory
-  _virtual.free(mapping.virtual_memory());
-
   // Free physical memory
   _physical.free(mapping.physical_memory());
 }
