@@ -466,6 +466,8 @@ void ZPageAllocator::unmap_uncommit_free_mapping(ZMappedMemory& mapping) {
   unmap_mapping(mapping);
   uncommit_physical(mapping.physical_memory());
   free_mapping(mapping);
+  EventZVAUsage event;
+  event.commit(untype(mapping.start()), mapping.size(), 3);
 }
 
 void ZPageAllocator::free_mapping(const ZMappedMemory& mapping) {
