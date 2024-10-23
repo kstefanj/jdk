@@ -27,12 +27,19 @@
 #include "gc/z/zPage.inline.hpp"
 #include "gc/z/zPhysicalMemory.inline.hpp"
 #include "gc/z/zVirtualMemory.inline.hpp"
+#include "jfr/jfr.hpp"
+#include "jfr/jfrEvents.hpp"
 
 ZMappedCache::ZMappedCache()
-  : _tree() {}
+  : _tree(),
+    _first(true) {}
 
 void ZMappedCache::insert_mapping(const ZMappedMemory& mapping) {
   bool merged_left = false;
+
+  // When inserted into cache mark VA as primed (5)
+  EventZVAUsage event;
+  event.commit(untype(mapping.start()), mapping.size(), 5);
 
   // Check left node.
   ZMappedTreapNode* lnode = _tree.closest_leq(mapping.start());
@@ -62,6 +69,9 @@ void ZMappedCache::insert_mapping(const ZMappedMemory& mapping) {
       _tree.remove(rnode->key());
       _tree.upsert(mapping.start(), extended_mapping);
     }
+
+    // Hack
+    send_initial_events();
 
     return;
   }
@@ -99,7 +109,12 @@ size_t ZMappedCache::remove_mappings(ZArray<ZMappedMemory>* mappings, size_t siz
 
   // Remove all mappings marked for removal from the tree
   for (int i = 0; i < to_remove.length(); i++) {
-    _tree.remove(to_remove.at(i).start());
+    zoffset start = to_remove.at(i).start();
+    size_t size = to_remove.at(i).size();
+    _tree.remove(start);
+    // When removed from cache mark VA as used (1)
+    EventZVAUsage event;
+    event.commit(untype(start), size, 1);
   }
 
   to_remove.swap(mappings);
@@ -115,6 +130,9 @@ bool ZMappedCache::remove_mapping_contiguous(ZMappedMemory* mapping, size_t size
       // Perfect match
       _tree.remove(node->key());
       *mapping = node_mapping;
+      // When removed from cache mark VA as used (1)
+      EventZVAUsage event;
+      event.commit(untype(mapping->start()), mapping->size(), 1);
       return true;
     } else if (node_mapping.size() > size) {
       // Larger than necessary
@@ -122,9 +140,23 @@ bool ZMappedCache::remove_mapping_contiguous(ZMappedMemory* mapping, size_t size
       _tree.remove(node->key());
       _tree.upsert(node_mapping.start(), node_mapping);
       *mapping = initial_chunk;
+      EventZVAUsage event;
+      event.commit(untype(mapping->start()), mapping->size(), 1);
       return true;
     }
   }
 
   return false;
+}
+
+void ZMappedCache::send_initial_events() {
+  if (Jfr::is_recording() && _first) {
+    ZMappedTreap::InOrderIterator iterator(&_tree);
+    for (ZMappedTreapNode* node; iterator.next(&node);) {
+      ZMappedMemory mapping = node->val();
+      EventZVAUsage event;
+      event.commit(untype(mapping.start()), mapping.size(), 5);
+    }
+    _first = false;
+  }
 }

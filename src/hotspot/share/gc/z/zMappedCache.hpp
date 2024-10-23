@@ -49,6 +49,9 @@ private:
   using ZMappedTreapNode = ZMappedTreap::TreapNode;
 
   ZMappedTreap _tree;
+  bool         _first;
+
+  void send_initial_events();
 
 public:
   ZMappedCache();
