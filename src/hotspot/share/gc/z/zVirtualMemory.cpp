@@ -30,6 +30,7 @@
 #include "gc/z/zInitialize.hpp"
 #include "gc/z/zNMT.hpp"
 #include "gc/z/zVirtualMemory.inline.hpp"
+#include "jfr/jfrEvents.hpp"
 #include "utilities/align.hpp"
 #include "utilities/debug.hpp"
 
@@ -152,7 +153,7 @@ bool ZVirtualMemoryManager::reserve_contiguous(zoffset start, size_t size) {
   ZNMT::reserve(addr, size);
 
   // Make the address range free
-  _manager.free(start, size);
+  free(start, size);
 
   return true;
 }
@@ -228,9 +229,17 @@ ZVirtualMemory ZVirtualMemoryManager::alloc(size_t size, bool force_low_address)
     return ZVirtualMemory();
   }
 
+  EventZVAUsage event;
+  event.commit(untype(start), size, 1);
   return ZVirtualMemory(start, size);
 }
 
+void ZVirtualMemoryManager::free(zoffset start, size_t size) {
+  EventZVAUsage event;
+  _manager.free(start, size);
+  event.commit(untype(start), size, 0);
+}
+
 void ZVirtualMemoryManager::free(const ZVirtualMemory& vmem) {
-  _manager.free(vmem.start(), vmem.size());
+  free(vmem.start(), vmem.size());
 }
