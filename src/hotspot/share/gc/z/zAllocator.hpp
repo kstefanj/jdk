@@ -50,7 +50,7 @@ public:
 
   ZAllocator(ZPageAge age);
 
-  void retire_pages();
+  void concurrent_retire_pages();
 };
 
 class ZAllocatorEden : public ZAllocator {

@@ -67,6 +67,20 @@ void ZObjectAllocator::undo_alloc_page(ZPage* page) {
   ZHeap::heap()->undo_alloc_page(page);
 }
 
+bool ZObjectAllocator::page_is_active(const ZPage* page) const {
+  if (page == nullptr) {
+    // No page installed
+    return false;
+  }
+
+  if (!page->is_allocating()) {
+    // Installed page is not allocating and needs to be retired
+    return false;
+  }
+
+  return true;
+}
+
 zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
                                                        ZPageType page_type,
                                                        size_t page_size,
@@ -75,7 +89,9 @@ zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
   zaddress addr = zaddress::null;
   ZPage* page = Atomic::load_acquire(shared_page);
 
-  if (page != nullptr) {
+  // To avoid having to explicitly retire pages in the safepoint we
+  // make sure to only allocate from active pages.
+  if (page_is_active(page)) {
     addr = page->alloc_object_atomic(size);
   }
 
@@ -83,6 +99,7 @@ zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
     // Allocate new page
     ZPage* const new_page = alloc_page(page_type, page_size, flags);
     if (new_page != nullptr) {
+      assert(new_page->is_allocating(), "Inv");
       // Allocate object before installing the new page
       addr = new_page->alloc_object(size);
 
@@ -90,13 +107,14 @@ zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
       // Install new page
       ZPage* const prev_page = Atomic::cmpxchg(shared_page, page, new_page);
       if (prev_page != page) {
-        if (prev_page == nullptr) {
+        if (prev_page == nullptr || !prev_page->is_allocating()) {
           // Previous page was retired, retry installing the new page
           page = prev_page;
           goto retry;
         }
 
         // Another page already installed, try allocation there first
+        assert(prev_page->is_allocating(), "Inv");
         const zaddress prev_addr = prev_page->alloc_object_atomic(size);
         if (is_null(prev_addr)) {
           // Allocation failed, retry installing the new page
@@ -122,7 +140,9 @@ zaddress ZObjectAllocator::alloc_object_in_medium_page(size_t size,
   ZPage** shared_medium_page = _shared_medium_page.addr();
   ZPage* page = Atomic::load_acquire(shared_medium_page);
 
-  if (page != nullptr) {
+  // To avoid having to explicitly retire pages in the safepoint we
+  // make sure to only allocate from active pages.
+  if (page_is_active(page)) {
     addr = page->alloc_object_atomic(size);
   }
 
@@ -222,17 +242,28 @@ size_t ZObjectAllocator::remaining() const {
   assert(Thread::current()->is_Java_thread(), "Should be a Java thread");
 
   const ZPage* const page = Atomic::load_acquire(shared_small_page_addr());
-  if (page != nullptr) {
+  // Make sure to only check active pages
+  if (page_is_active(page)) {
     return page->remaining();
   }
 
   return 0;
 }
 
-void ZObjectAllocator::retire_pages() {
-  assert(SafepointSynchronize::is_at_safepoint(), "Should be at safepoint");
+static void retire_at(ZPage** page_addr) {
+  ZPage* page = Atomic::load_acquire(page_addr);
+  if (page != nullptr && !page->is_allocating()) {
+    // Try to retire
+    ZPage* const prev_page = Atomic::cmpxchg(page_addr, page, (ZPage*) nullptr);
+    assert(prev_page == page || prev_page->is_allocating(), "Either we retired or someone else should have installed a valid page");
+  }
+}
 
+void ZObjectAllocator::concurrent_retire_pages() {
   // Reset allocation pages
-  _shared_medium_page.set(nullptr);
-  _shared_small_page.set_all(nullptr);
+  ZPerCPUIterator<ZPage*> iter(&_shared_small_page);
+  for (ZPage** page_addr; iter.next(&page_addr);) {
+    retire_at(page_addr);
+  }
+  retire_at(_shared_medium_page.addr());
 }

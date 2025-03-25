@@ -199,6 +199,8 @@ private:
   ZRemembered  _remembered;
   ZYoungTracer _jfr_tracer;
 
+  bool is_young_and_old() const;
+
   void flip_mark_start();
   void flip_relocate_start();
 
@@ -210,6 +212,7 @@ private:
   void relocate();
 
   void pause_mark_start();
+  void concurrent_retire_pages();
   void concurrent_mark();
   bool pause_mark_end();
   void concurrent_mark_continue();

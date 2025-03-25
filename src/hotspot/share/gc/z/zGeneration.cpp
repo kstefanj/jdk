@@ -76,6 +76,7 @@ static const ZStatPhaseGeneration ZPhaseGenerationOld("Old Generation", ZGenerat
 
 static const ZStatPhasePause      ZPhasePauseMarkStartYoung("Pause Mark Start", ZGenerationId::young);
 static const ZStatPhasePause      ZPhasePauseMarkStartYoungAndOld("Pause Mark Start (Major)", ZGenerationId::young);
+static const ZStatPhaseConcurrent ZPhaseConcurrentRetirePages("Concurrent Retire Pages", ZGenerationId::young);
 static const ZStatPhaseConcurrent ZPhaseConcurrentMarkYoung("Concurrent Mark", ZGenerationId::young);
 static const ZStatPhaseConcurrent ZPhaseConcurrentMarkContinueYoung("Concurrent Mark Continue", ZGenerationId::young);
 static const ZStatPhasePause      ZPhasePauseMarkEndYoung("Pause Mark End", ZGenerationId::young);
@@ -515,6 +516,11 @@ void ZGenerationYoung::collect(ZYoungType type, ConcurrentGCTimer* timer) {
   // Phase 1: Pause Mark Start
   pause_mark_start();
 
+  // Phase 1.5: Concurrent Retire Pages
+  concurrent_retire_pages();
+
+  abortpoint();
+
   // Phase 2: Concurrent Mark
   concurrent_mark();
 
@@ -615,6 +621,11 @@ public:
   }
 };
 
+bool ZGenerationYoung::is_young_and_old() const {
+  return type() == ZYoungType::major_full_roots ||
+         type() == ZYoungType::major_partial_roots;
+}
+
 void ZGenerationYoung::flip_mark_start() {
   ZGlobalsPointers::flip_young_mark_start();
   ZBarrierSet::assembler()->patch_barriers();
@@ -628,11 +639,24 @@ void ZGenerationYoung::flip_relocate_start() {
 }
 
 void ZGenerationYoung::pause_mark_start() {
-  if (type() == ZYoungType::major_full_roots ||
-      type() == ZYoungType::major_partial_roots) {
+  if (is_young_and_old()) {
     VM_ZMarkStartYoungAndOld().pause();
   } else {
     VM_ZMarkStartYoung().pause();
+  }
+}
+
+void ZGenerationYoung::concurrent_retire_pages() {
+  ZStatTimerYoung timer(ZPhaseConcurrentRetirePages);
+  // Always retire young pages
+  ZAllocator::eden()->concurrent_retire_pages();
+  for (ZPageAge i = ZPageAge::survivor1; i <= ZPageAge::survivor14; i = static_cast<ZPageAge>(static_cast<uint>(i) + 1)) {
+    ZAllocator::relocation(i)->concurrent_retire_pages();
+  }
+
+  // Retire old when starting a major collection
+  if (is_young_and_old()) {
+    ZAllocator::old()->concurrent_retire_pages();
   }
 }
 
@@ -839,12 +863,6 @@ void ZGenerationYoung::mark_start() {
 
   // Reset TLAB usage
   ZHeap::heap()->reset_tlab_used();
-
-  // Retire allocating pages
-  ZAllocator::eden()->retire_pages();
-  for (ZPageAge i = ZPageAge::survivor1; i <= ZPageAge::survivor14; i = static_cast<ZPageAge>(static_cast<uint>(i) + 1)) {
-    ZAllocator::relocation(i)->retire_pages();
-  }
 
   // Reset allocated/reclaimed/used statistics
   reset_statistics();
@@ -1191,9 +1209,6 @@ void ZGenerationOld::mark_start() {
 
   // Change good colors
   flip_mark_start();
-
-  // Retire allocating pages
-  ZAllocator::old()->retire_pages();
 
   // Reset allocated/reclaimed/used statistics
   reset_statistics();

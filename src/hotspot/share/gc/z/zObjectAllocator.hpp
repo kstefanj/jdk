@@ -47,6 +47,7 @@ private:
 
   ZPage* alloc_page(ZPageType type, size_t size, ZAllocationFlags flags);
   void undo_alloc_page(ZPage* page);
+  bool page_is_active(const ZPage* page) const;
 
   // Allocate an object in a shared page. Allocate and
   // atomically install a new page if necessary.
@@ -80,7 +81,7 @@ public:
 
   size_t remaining() const;
 
-  void retire_pages();
+  void concurrent_retire_pages();
 };
 
 #endif // SHARE_GC_Z_ZOBJECTALLOCATOR_HPP

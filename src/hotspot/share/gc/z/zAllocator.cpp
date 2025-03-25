@@ -30,8 +30,8 @@ ZAllocatorForRelocation* ZAllocator::_relocation[ZAllocator::_relocation_allocat
 ZAllocator::ZAllocator(ZPageAge age)
   : _object_allocator(age) {}
 
-void ZAllocator::retire_pages() {
-  _object_allocator.retire_pages();
+void ZAllocator::concurrent_retire_pages() {
+  _object_allocator.concurrent_retire_pages();
 }
 
 ZAllocatorEden::ZAllocatorEden()
