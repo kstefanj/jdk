@@ -40,6 +40,7 @@ public:
   static void reset_statistics();
   static void publish_statistics();
 
+  static void retire_event(JavaThread* thread, ThreadLocalAllocStats* stats, size_t actual_tlab_size, size_t prev_desired_size);
   static void retire(JavaThread* thread, ThreadLocalAllocStats* stats);
   static void update_stats(JavaThread* thread);
 };

@@ -26,6 +26,8 @@
 #include "gc/z/zStackWatermark.hpp"
 #include "gc/z/zThreadLocalAllocBuffer.hpp"
 #include "gc/z/zValue.inline.hpp"
+#include "jfr/jfrEvents.hpp"
+#include "jfr/support/jfrThreadId.inline.hpp"
 #include "runtime/globals.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/stackWatermarkSet.inline.hpp"
@@ -62,13 +64,29 @@ void ZThreadLocalAllocBuffer::publish_statistics() {
   }
 }
 
+void ZThreadLocalAllocBuffer::retire_event(JavaThread* thread, ThreadLocalAllocStats* stats, size_t actual_tlab_size, size_t prev_desired_size) {
+  EventZTLABRetire event;
+  event.set_refills(stats->_total_refills);
+  event.set_tlab_size(actual_tlab_size); // Already in bytes
+  event.set_sum_tlabs(stats->_total_allocations * HeapWordSize);
+  event.set_prev_desired_size(prev_desired_size * HeapWordSize);
+  event.set_desired_size(thread->tlab().desired_size() * HeapWordSize);
+  event.set_gc_waste(stats->_total_gc_waste * HeapWordSize);
+  event.set_refill_waste(stats->_total_refill_waste * HeapWordSize);
+  event.set_thread(JFR_JVM_THREAD_ID(thread));
+  event.commit();
+}
+
 void ZThreadLocalAllocBuffer::retire(JavaThread* thread, ThreadLocalAllocStats* stats) {
   if (UseTLAB) {
     stats->reset();
+    size_t desired_size = thread->tlab().desired_size();
+    size_t actual_tlab_size = thread->tlab().size_bytes();
     thread->tlab().retire(stats);
     if (ResizeTLAB) {
       thread->tlab().resize();
     }
+    retire_event(thread, stats, actual_tlab_size, desired_size);
   }
 }
 

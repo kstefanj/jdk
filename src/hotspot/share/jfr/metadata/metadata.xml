@@ -73,6 +73,17 @@
     <Field type="string" name="name" label="Name" />
   </Event>
 
+  <Event name="ZTLABRetire" category="Java Virtual Machine, GC, Detailed" label="ZGC TLAB Retire" description="Debug event for tlab retire in ZGC" thread="false" internal="true" stackTrace="false">
+    <Field type="uint" name="refills" label="Number of refills for TLAB" />
+    <Field type="ulong" contentType="bytes" name="tlab_size" label="Size of last TLAB" />
+    <Field type="ulong" contentType="bytes" name="sum_tlabs" label="Sum allocated in TLAB" />
+    <Field type="ulong" contentType="bytes" name="desired_size" label="Desired size of TLAB" />
+    <Field type="ulong" contentType="bytes" name="prev_desired_size" label="Desired size of TLAB before resize" />
+    <Field type="ulong" contentType="bytes" name="gc_waste" label="Waste for TLAB due to GC" />
+    <Field type="ulong" contentType="bytes" name="refill_waste" label="Waste for TLAB due to Refill" />
+    <Field type="Thread" name="thread" label="Actual Java Thread" />
+  </Event>
+
   <Event name="ResidentSetSize" category="Java Virtual Machine, Memory" label="Resident Set Size" description="Resident set size of the process" thread="false" period="everyChunk">
     <Field type="ulong" contentType="bytes" name="size" label="Resident Set Size" description="Resident set size of the process" />
     <Field type="ulong" contentType="bytes" name="peak" label="Resident Set Size Peak Value" description="Resident set size peak value of the process" />
@@ -1237,7 +1248,7 @@
     <Field type="ulong" name="regionsImmediate" label="Regions Immediate" />
     <Field type="ulong" contentType="bytes" name="immediateBytes" label="Immediate Bytes" />
   </Event>
-  
+
   <Event name="Flush" category="Flight Recorder" label="Flush" thread="false" experimental="true">
     <Field type="ulong" name="flushId" label="Flush Identifier" relation="FlushId" />
     <Field type="ulong" name="elements" label="Elements Written" />

@@ -122,6 +122,8 @@ public:
   size_t used() const                            { return pointer_delta(top(), start()); }
   size_t used_bytes() const                      { return pointer_delta(top(), start(), 1); }
   size_t free() const                            { return pointer_delta(end(), top()); }
+  size_t size_bytes() const                      { return pointer_delta(end(), start(), 1); }
+
   // Don't discard tlab if remaining space is larger than this.
   size_t refill_waste_limit() const              { return _refill_waste_limit; }
   size_t bytes_since_last_sample_point() const   { return _bytes_since_last_sample_point; }
@@ -186,8 +188,9 @@ public:
   static ByteSize top_offset()                   { return byte_offset_of(ThreadLocalAllocBuffer, _top); }
   static ByteSize pf_top_offset()                { return byte_offset_of(ThreadLocalAllocBuffer, _pf_top); }
 };
-
+class ZThreadLocalAllocBuffer;
 class ThreadLocalAllocStats : public StackObj {
+friend ZThreadLocalAllocBuffer;
 private:
   static PerfVariable* _perf_allocating_threads;
   static PerfVariable* _perf_total_refills;
