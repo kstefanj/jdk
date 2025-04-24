@@ -397,6 +397,7 @@ void ThreadHeapSampler::pick_next_geometric_sample() {
   assert(result > 0 && result < static_cast<double>(SIZE_MAX), "Result is not in an acceptable range.");
   size_t interval = static_cast<size_t>(result);
   _bytes_until_sample = interval;
+  _bytes_until_sample = get_sampling_interval();
 }
 
 void ThreadHeapSampler::pick_next_sample(size_t overflowed_bytes) {
@@ -421,6 +422,7 @@ void ThreadHeapSampler::check_for_sampling(oop obj, size_t allocation_size, size
   // If not yet time for a sample, skip it.
   if (total_allocated_bytes < _bytes_until_sample) {
     _bytes_until_sample -= total_allocated_bytes;
+    log_debug(gc, tlab)("No sample2: bytes left: %zu, total: %zu, alloc: %zu", _bytes_until_sample, total_allocated_bytes, allocation_size);
     return;
   }
 
@@ -428,6 +430,7 @@ void ThreadHeapSampler::check_for_sampling(oop obj, size_t allocation_size, size
 
   size_t overflow_bytes = total_allocated_bytes - _bytes_until_sample;
   pick_next_sample(overflow_bytes);
+  log_debug(gc, tlab)("   Sampled: bytes left: %zu, total: %zu, alloc: %zu, overflow: %zu", _bytes_until_sample, total_allocated_bytes, allocation_size, overflow_bytes);
 }
 
 int ThreadHeapSampler::get_sampling_interval() {
