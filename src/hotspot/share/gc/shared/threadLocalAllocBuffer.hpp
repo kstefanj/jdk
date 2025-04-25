@@ -52,11 +52,12 @@ private:
   HeapWord* _pf_top;                             // allocation prefetch watermark
   HeapWord* _end;                                // allocation end (can be the sampling end point or _allocation_end)
   HeapWord* _allocation_end;                     // end for allocations (actual TLAB end, excluding alignment_reserve)
+  HeapWord* _sample_start;                       // where the current sampling inteval starts
 
   size_t    _desired_size;                       // desired size   (including alignment_reserve)
   size_t    _refill_waste_limit;                 // hold onto tlab if free() is larger than this
   size_t    _allocated_before_last_gc;           // total bytes allocated up until the last gc
-  size_t    _bytes_since_last_sample_point;      // bytes since last sample point.
+  size_t    _bytes_accumulated_since_sample;     // bytes accumulated from tlab refills and slow allocations since last sample
 
   static size_t   _max_size;                          // maximum size of any TLAB
   static int      _reserve_for_allocation_prefetch;   // Reserve at the end of the TLAB
@@ -77,6 +78,7 @@ private:
   void set_allocation_end(HeapWord* ptr)         { _allocation_end = ptr; }
   void set_top(HeapWord* top)                    { _top = top; }
   void set_pf_top(HeapWord* pf_top)              { _pf_top = pf_top; }
+  void set_sample_start(HeapWord* sample_start)  { _sample_start = sample_start; }
   void set_desired_size(size_t desired_size)     { _desired_size = desired_size; }
   void set_refill_waste_limit(size_t waste)      { _refill_waste_limit = waste;  }
 
@@ -118,13 +120,17 @@ public:
   HeapWord* top() const                          { return _top; }
   HeapWord* hard_end();
   HeapWord* pf_top() const                       { return _pf_top; }
+  HeapWord* sample_start() const                 { return _sample_start; }
   size_t desired_size() const                    { return _desired_size; }
   size_t used() const                            { return pointer_delta(top(), start()); }
   size_t used_bytes() const                      { return pointer_delta(top(), start(), 1); }
   size_t free() const                            { return pointer_delta(end(), top()); }
   // Don't discard tlab if remaining space is larger than this.
   size_t refill_waste_limit() const              { return _refill_waste_limit; }
-  size_t bytes_since_last_sample_point() const   { return _bytes_since_last_sample_point; }
+  size_t allocated_from_sample_start() const   { return pointer_delta(top(), sample_start(), 1); }
+  size_t bytes_accumulated_since_sample() const   { return _bytes_accumulated_since_sample + allocated_from_sample_start(); }
+  void   increase_bytes_accumulated_since_sample(size_t add);// { _bytes_accumulated_since_sample += add; }
+  void   reset_bytes_accumulated_since_sample() { _bytes_accumulated_since_sample = 0; }
 
   // For external inspection.
   const HeapWord* start_relaxed() const;
@@ -168,7 +174,8 @@ public:
   void initialize();
 
   void set_back_allocation_end();
-  void set_sample_end(bool reset_byte_accumulation);
+  void reset_sample_start();
+  void set_sample_end();
 
   static size_t refill_waste_limit_increment();
 

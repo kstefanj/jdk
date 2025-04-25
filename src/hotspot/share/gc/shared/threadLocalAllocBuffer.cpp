@@ -46,10 +46,11 @@ ThreadLocalAllocBuffer::ThreadLocalAllocBuffer() :
   _pf_top(nullptr),
   _end(nullptr),
   _allocation_end(nullptr),
+  _sample_start(nullptr),
   _desired_size(0),
   _refill_waste_limit(0),
   _allocated_before_last_gc(0),
-  _bytes_since_last_sample_point(0),
+  _bytes_accumulated_since_sample(0),
   _number_of_refills(0),
   _refill_waste(0),
   _gc_waste(0),
@@ -148,7 +149,12 @@ void ThreadLocalAllocBuffer::retire(ThreadLocalAllocStats* stats) {
 
 void ThreadLocalAllocBuffer::retire_before_allocation() {
   _refill_waste += (unsigned int)remaining();
+
+  _bytes_accumulated_since_sample += allocated_from_sample_start();
+  log_debug(gc, tlab)(" Accumulated (retire): %zuB (%zuB)", _bytes_accumulated_since_sample, allocated_from_sample_start());
+
   retire();
+
 }
 
 void ThreadLocalAllocBuffer::resize() {
@@ -184,6 +190,7 @@ void ThreadLocalAllocBuffer::fill(HeapWord* start,
                                   size_t    new_size) {
   _number_of_refills++;
   _allocated_size += new_size;
+
   print_stats("fill");
   assert(top <= start + new_size - alignment_reserve(), "size too small");
 
@@ -201,6 +208,7 @@ void ThreadLocalAllocBuffer::initialize(HeapWord* start,
   set_pf_top(top);
   set_end(end);
   set_allocation_end(end);
+  set_sample_start(start);
   invariants();
 }
 
@@ -312,21 +320,25 @@ void ThreadLocalAllocBuffer::print_stats(const char* tag) {
             _refill_waste * HeapWordSize);
 }
 
-void ThreadLocalAllocBuffer::set_sample_end(bool reset_byte_accumulation) {
-  size_t heap_words_remaining = pointer_delta(_end, _top);
-  size_t bytes_until_sample = thread()->heap_sampler().bytes_until_sample();
-  size_t words_until_sample = bytes_until_sample / HeapWordSize;
+void ThreadLocalAllocBuffer::increase_bytes_accumulated_since_sample(size_t add) {
+  _bytes_accumulated_since_sample += add;
+  log_debug(gc, tlab)(" Accumulated (outsid): %zuB (%zuB)", _bytes_accumulated_since_sample, add);
+}
 
-  if (reset_byte_accumulation) {
-    _bytes_since_last_sample_point = 0;
-  }
+void ThreadLocalAllocBuffer::reset_sample_start() {
+  log_debug(gc, tlab)(" - Sample start updated: " PTR_FORMAT " (" PTR_FORMAT ")", p2i(_top), p2i(_sample_start));
+  set_sample_start(_top);
+}
+
+void ThreadLocalAllocBuffer::set_sample_end() {
+  size_t heap_words_remaining = pointer_delta(_end, _top);
+  size_t bytes_until_sample = thread()->heap_sampler().bytes_until_sample() - _bytes_accumulated_since_sample;
+  size_t words_until_sample = bytes_until_sample / HeapWordSize;
 
   if (heap_words_remaining > words_until_sample) {
     HeapWord* new_end = _top + words_until_sample;
+    log_debug(gc, tlab)(" - Sample end updated: " PTR_FORMAT " (" PTR_FORMAT ")", p2i(new_end), p2i(_end));
     set_end(new_end);
-    _bytes_since_last_sample_point += bytes_until_sample;
-  } else {
-    _bytes_since_last_sample_point += heap_words_remaining * HeapWordSize;
   }
 }
 

@@ -55,7 +55,7 @@ class ThreadHeapSampler {
 
   size_t bytes_until_sample()                    { return _bytes_until_sample;   }
 
-  void check_for_sampling(oop obj, size_t size_in_bytes, size_t bytes_allocated_before);
+  bool check_for_sampling(oop obj, size_t tlab_allocted_since_last_sample);
 
   static void set_sampling_interval(int sampling_interval);
   static int get_sampling_interval();

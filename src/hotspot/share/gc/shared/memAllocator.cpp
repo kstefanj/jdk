@@ -174,14 +174,14 @@ void MemAllocator::Allocation::notify_allocation_jvmti_sampler() {
     // Sample if it's a non-TLAB allocation, or a TLAB allocation that either refills the TLAB
     // or expands it due to taking a sampler induced slow path.
     log_debug(gc, tlab)("No sample1: bytes left: %zu, total: %zu, alloc: %zu",
-                        _thread->heap_sampler().bytes_until_sample(), _allocator._word_size * HeapWordSize + _thread->tlab().bytes_since_last_sample_point(), _allocator._word_size * HeapWordSize);
+                        _thread->heap_sampler().bytes_until_sample(), _allocator._word_size * HeapWordSize + _thread->tlab().bytes_accumulated_since_sample(), _allocator._word_size * HeapWordSize);
     return;
   }
 
   // If we want to be sampling, protect the allocated object with a Handle
   // before doing the callback. The callback is done in the destructor of
   // the JvmtiSampledObjectAllocEventCollector.
-  size_t bytes_since_last = 0;
+  size_t tlab_bytes_since_last_sample = 0;
 
   {
     PreserveObj obj_h(_thread, _obj_ptr);
@@ -189,17 +189,17 @@ void MemAllocator::Allocation::notify_allocation_jvmti_sampler() {
     size_t size_in_bytes = _allocator._word_size * HeapWordSize;
     ThreadLocalAllocBuffer& tlab = _thread->tlab();
 
-    if (!_allocated_outside_tlab) {
-      bytes_since_last = tlab.bytes_since_last_sample_point();
+    tlab_bytes_since_last_sample = tlab.bytes_accumulated_since_sample();
+
+    bool sampled = _thread->heap_sampler().check_for_sampling(obj_h(), tlab_bytes_since_last_sample);
+    if (sampled) {
+      tlab.reset_bytes_accumulated_since_sample();
+      tlab.reset_sample_start();
     }
-
-    _thread->heap_sampler().check_for_sampling(obj_h(), size_in_bytes, bytes_since_last);
   }
 
-  if (_tlab_end_reset_for_sample || _allocated_tlab_size != 0) {
-    // Tell tlab to forget bytes_since_last if we passed it to the heap sampler.
-    _thread->tlab().set_sample_end(bytes_since_last != 0);
-  }
+  // Check if sample end needs to be reset.
+  _thread->tlab().set_sample_end();
 }
 
 void MemAllocator::Allocation::notify_allocation_low_memory_detector() {
@@ -247,6 +247,7 @@ HeapWord* MemAllocator::mem_allocate_outside_tlab(Allocation& allocation) const 
 
   size_t size_in_bytes = _word_size * HeapWordSize;
   _thread->incr_allocated_bytes(size_in_bytes);
+  _thread->tlab().increase_bytes_accumulated_since_sample(size_in_bytes);
 
   return mem;
 }

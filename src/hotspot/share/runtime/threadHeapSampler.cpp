@@ -25,6 +25,7 @@
 
 #include "logging/log.hpp"
 #include "logging/logTag.hpp"
+#include "oops/oop.inline.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/handles.inline.hpp"
@@ -416,21 +417,21 @@ void ThreadHeapSampler::pick_next_sample(size_t overflowed_bytes) {
   pick_next_geometric_sample();
 }
 
-void ThreadHeapSampler::check_for_sampling(oop obj, size_t allocation_size, size_t bytes_since_allocation) {
-  size_t total_allocated_bytes = bytes_since_allocation + allocation_size;
-
+bool ThreadHeapSampler::check_for_sampling(oop obj, size_t tlab_allocted_since_last_sample) {
   // If not yet time for a sample, skip it.
-  if (total_allocated_bytes < _bytes_until_sample) {
-    _bytes_until_sample -= total_allocated_bytes;
-    log_debug(gc, tlab)("No sample2: bytes left: %zu, total: %zu, alloc: %zu", _bytes_until_sample, total_allocated_bytes, allocation_size);
-    return;
+  if (tlab_allocted_since_last_sample < _bytes_until_sample) {
+    log_debug(gc, tlab)("No sample2: bytes left: %zu, total: %zu, alloc: %zu", _bytes_until_sample, tlab_allocted_since_last_sample, obj->size() * HeapWordSize);
+    return false;
   }
 
   JvmtiExport::sampled_object_alloc_event_collector(obj);
 
-  size_t overflow_bytes = total_allocated_bytes - _bytes_until_sample;
+  size_t overflow_bytes = tlab_allocted_since_last_sample - _bytes_until_sample;
   pick_next_sample(overflow_bytes);
-  log_debug(gc, tlab)("   Sampled: bytes left: %zu, total: %zu, alloc: %zu, overflow: %zu", _bytes_until_sample, total_allocated_bytes, allocation_size, overflow_bytes);
+  log_debug(gc, tlab)("   Sampled: bytes left: %zu, total: %zu, alloc: %zu, overflow: %zu", _bytes_until_sample, tlab_allocted_since_last_sample, obj->size() * HeapWordSize, overflow_bytes);
+  // This was not done before
+  //_bytes_until_sample -= overflow_bytes;
+  return true;
 }
 
 int ThreadHeapSampler::get_sampling_interval() {
