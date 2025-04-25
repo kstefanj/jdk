@@ -127,9 +127,10 @@ public:
   size_t free() const                            { return pointer_delta(end(), top()); }
   // Don't discard tlab if remaining space is larger than this.
   size_t refill_waste_limit() const              { return _refill_waste_limit; }
-  size_t allocated_from_sample_start() const   { return pointer_delta(top(), sample_start(), 1); }
-  size_t bytes_accumulated_since_sample() const   { return _bytes_accumulated_since_sample + allocated_from_sample_start(); }
-  void   increase_bytes_accumulated_since_sample(size_t add);// { _bytes_accumulated_since_sample += add; }
+
+  size_t used_bytes_since_sample_start() const   { return pointer_delta(top(), sample_start(), 1); }
+  size_t bytes_accumulated_since_sample() const  { return _bytes_accumulated_since_sample + used_bytes_since_sample_start(); }
+  void   increase_bytes_accumulated_since_sample(size_t add) { _bytes_accumulated_since_sample += add; }
   void   reset_bytes_accumulated_since_sample() { _bytes_accumulated_since_sample = 0; }
 
   // For external inspection.

@@ -150,8 +150,8 @@ void ThreadLocalAllocBuffer::retire(ThreadLocalAllocStats* stats) {
 void ThreadLocalAllocBuffer::retire_before_allocation() {
   _refill_waste += (unsigned int)remaining();
 
-  _bytes_accumulated_since_sample += allocated_from_sample_start();
-  log_debug(gc, tlab)(" Accumulated (retire): %zuB (%zuB)", _bytes_accumulated_since_sample, allocated_from_sample_start());
+  _bytes_accumulated_since_sample += used_bytes_since_sample_start();
+  log_debug(gc, tlab)(" Accumulated (retire): %zuB (%zuB)", _bytes_accumulated_since_sample, used_bytes_since_sample_start());
 
   retire();
 
@@ -320,13 +320,7 @@ void ThreadLocalAllocBuffer::print_stats(const char* tag) {
             _refill_waste * HeapWordSize);
 }
 
-void ThreadLocalAllocBuffer::increase_bytes_accumulated_since_sample(size_t add) {
-  _bytes_accumulated_since_sample += add;
-  log_debug(gc, tlab)(" Accumulated (outsid): %zuB (%zuB)", _bytes_accumulated_since_sample, add);
-}
-
 void ThreadLocalAllocBuffer::reset_sample_start() {
-  log_debug(gc, tlab)(" - Sample start updated: " PTR_FORMAT " (" PTR_FORMAT ")", p2i(_top), p2i(_sample_start));
   set_sample_start(_top);
 }
 

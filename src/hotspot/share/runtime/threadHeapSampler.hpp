@@ -30,7 +30,7 @@
 
 class ThreadHeapSampler {
  private:
-  size_t _bytes_until_sample;
+  size_t _sampling_threshold;
   // Cheap random number generator
   static uint64_t _rnd;
 
@@ -49,13 +49,13 @@ class ThreadHeapSampler {
       _rnd = 1;
     }
 
-    // Call this after _rnd is initialized to initialize _bytes_until_sample.
+    // Call this after _rnd is initialized to initialize _sampling_threshold.
     pick_next_sample();
   }
 
-  size_t bytes_until_sample()                    { return _bytes_until_sample;   }
+  size_t bytes_until_sample()                    { return _sampling_threshold;   }
 
-  bool check_for_sampling(oop obj, size_t tlab_allocted_since_last_sample);
+  bool maybe_sample(oop obj, size_t tlab_allocted_since_last_sample);
 
   static void set_sampling_interval(int sampling_interval);
   static int get_sampling_interval();

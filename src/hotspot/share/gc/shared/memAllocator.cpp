@@ -173,8 +173,6 @@ void MemAllocator::Allocation::notify_allocation_jvmti_sampler() {
   if (!_allocated_outside_tlab && _allocated_tlab_size == 0 && !_tlab_end_reset_for_sample) {
     // Sample if it's a non-TLAB allocation, or a TLAB allocation that either refills the TLAB
     // or expands it due to taking a sampler induced slow path.
-    log_debug(gc, tlab)("No sample1: bytes left: %zu, total: %zu, alloc: %zu",
-                        _thread->heap_sampler().bytes_until_sample(), _allocator._word_size * HeapWordSize + _thread->tlab().bytes_accumulated_since_sample(), _allocator._word_size * HeapWordSize);
     return;
   }
 
@@ -191,7 +189,7 @@ void MemAllocator::Allocation::notify_allocation_jvmti_sampler() {
 
     tlab_bytes_since_last_sample = tlab.bytes_accumulated_since_sample();
 
-    bool sampled = _thread->heap_sampler().check_for_sampling(obj_h(), tlab_bytes_since_last_sample);
+    const bool sampled = _thread->heap_sampler().maybe_sample(obj_h(), tlab_bytes_since_last_sample);
     if (sampled) {
       tlab.reset_bytes_accumulated_since_sample();
       tlab.reset_sample_start();
