@@ -25,7 +25,6 @@
 
 #include "logging/log.hpp"
 #include "logging/logTag.hpp"
-#include "oops/oop.inline.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/handles.inline.hpp"
@@ -400,7 +399,7 @@ void ThreadHeapSampler::pick_next_geometric_sample() {
   _sampling_threshold = interval;
 }
 
-void ThreadHeapSampler::pick_next_sample(size_t overflowed_bytes) {
+void ThreadHeapSampler::pick_next_sample() {
 #ifndef PRODUCT
   if (!log_table_checked) {
     verify_or_generate_log_table();
@@ -416,20 +415,21 @@ void ThreadHeapSampler::pick_next_sample(size_t overflowed_bytes) {
   pick_next_geometric_sample();
 }
 
-bool ThreadHeapSampler::maybe_sample(oop obj, size_t tlab_allocted_since_last_sample) {
-  // If not yet time for a sample, skip it.
-  if (tlab_allocted_since_last_sample < _sampling_threshold) {
-    log_debug(heapsampling)("Sampling threshold not exceeded: sampling threshold: %zuB, total: %zuB", _sampling_threshold, tlab_allocted_since_last_sample);
-    return false;
+size_t ThreadHeapSampler::bytes_until_sample(size_t allocated_since_last_sample) {
+  if (allocated_since_last_sample > _sampling_threshold) {
+    return 0;
   }
+  return _sampling_threshold - allocated_since_last_sample;
+}
 
+bool ThreadHeapSampler::should_sample(size_t allocated_since_last_sample) {
+  return bytes_until_sample(allocated_since_last_sample) == 0;
+}
+
+void ThreadHeapSampler::sample(oop obj) {
   JvmtiExport::sampled_object_alloc_event_collector(obj);
 
-  size_t overflow_bytes = tlab_allocted_since_last_sample - _sampling_threshold;
-  pick_next_sample(overflow_bytes);
-  log_info(heapsampling)("Allocation sampled: sampling threshold: %zuB, allocated: %zuB, overflow: %zu (ignored)", _sampling_threshold, tlab_allocted_since_last_sample, overflow_bytes);
-
-  return true;
+  pick_next_sample();
 }
 
 int ThreadHeapSampler::get_sampling_interval() {

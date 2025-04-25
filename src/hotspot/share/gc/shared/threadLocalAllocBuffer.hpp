@@ -131,7 +131,6 @@ public:
   size_t used_bytes_since_sample_start() const   { return pointer_delta(top(), sample_start(), 1); }
   size_t bytes_accumulated_since_sample() const  { return _bytes_accumulated_since_sample + used_bytes_since_sample_start(); }
   void   increase_bytes_accumulated_since_sample(size_t add) { _bytes_accumulated_since_sample += add; }
-  void   reset_bytes_accumulated_since_sample() { _bytes_accumulated_since_sample = 0; }
 
   // For external inspection.
   const HeapWord* start_relaxed() const;
@@ -175,8 +174,8 @@ public:
   void initialize();
 
   void set_back_allocation_end();
-  void reset_sample_start();
-  void set_sample_end();
+  void reset_after_sample();
+  void set_sample_end(size_t bytes_until_sample);
 
   static size_t refill_waste_limit_increment();
 

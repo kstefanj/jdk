@@ -51,7 +51,7 @@ class MemAllocator::Allocation: StackObj {
   bool                _overhead_limit_exceeded;
   bool                _allocated_outside_tlab;
   size_t              _allocated_tlab_size;
-  bool                _tlab_end_reset_for_sample;
+  bool                _sampling_enabled;
 
   bool check_out_of_memory();
   void verify_before();
@@ -75,7 +75,7 @@ public:
       _overhead_limit_exceeded(false),
       _allocated_outside_tlab(false),
       _allocated_tlab_size(0),
-      _tlab_end_reset_for_sample(false)
+      _sampling_enabled(false)
   {
     assert(Thread::current() == allocator._thread, "do not pass MemAllocator across threads");
     verify_before();
@@ -165,39 +165,29 @@ void MemAllocator::Allocation::notify_allocation_jvmti_sampler() {
   // support for JVMTI VMObjectAlloc event (no-op if not enabled)
   JvmtiExport::vm_object_alloc_event_collector(obj());
 
-  if (!JvmtiExport::should_post_sampled_object_alloc()) {
-    // Sampling disabled
+  if (!_sampling_enabled) {
+    // Note: don't check JvmtiExport::should_post_sampled_object_alloc()
+    // because it can change during runtime and leave things in an inconsistent
+    // state.
     return;
   }
 
-  if (!_allocated_outside_tlab && _allocated_tlab_size == 0 && !_tlab_end_reset_for_sample) {
-    // Sample if it's a non-TLAB allocation, or a TLAB allocation that either refills the TLAB
-    // or expands it due to taking a sampler induced slow path.
-    return;
-  }
+  ThreadLocalAllocBuffer& tlab    = _thread->tlab();
+  ThreadHeapSampler& heap_sampler = _thread->heap_sampler();
 
-  // If we want to be sampling, protect the allocated object with a Handle
-  // before doing the callback. The callback is done in the destructor of
-  // the JvmtiSampledObjectAllocEventCollector.
-  size_t tlab_bytes_since_last_sample = 0;
-
-  {
+  if (heap_sampler.should_sample(tlab.bytes_accumulated_since_sample())) {
+    // If we want to be sampling, protect the allocated object with a Handle
+    // before doing the callback. The callback is done in the destructor of
+    // the JvmtiSampledObjectAllocEventCollector.
     PreserveObj obj_h(_thread, _obj_ptr);
     JvmtiSampledObjectAllocEventCollector collector;
-    size_t size_in_bytes = _allocator._word_size * HeapWordSize;
-    ThreadLocalAllocBuffer& tlab = _thread->tlab();
 
-    tlab_bytes_since_last_sample = tlab.bytes_accumulated_since_sample();
-
-    const bool sampled = _thread->heap_sampler().maybe_sample(obj_h(), tlab_bytes_since_last_sample);
-    if (sampled) {
-      tlab.reset_bytes_accumulated_since_sample();
-      tlab.reset_sample_start();
-    }
+    heap_sampler.sample(obj_h());
+    tlab.reset_after_sample();
   }
 
-  // Check if sample end needs to be reset.
-  _thread->tlab().set_sample_end();
+  // Reset sample end to match the current state
+  _thread->tlab().set_sample_end(heap_sampler.bytes_until_sample(tlab.bytes_accumulated_since_sample()));
 }
 
 void MemAllocator::Allocation::notify_allocation_low_memory_detector() {
@@ -259,12 +249,13 @@ HeapWord* MemAllocator::mem_allocate_inside_tlab_slow(Allocation& allocation) co
   ThreadLocalAllocBuffer& tlab = _thread->tlab();
 
   if (JvmtiExport::should_post_sampled_object_alloc()) {
+    allocation._sampling_enabled = true;
+    // When sampling we artificially set the TLAB end to the sample point.
+    // When we hit that point it looks like the TLAB is full, but it's
+    // not necessarily the case. Set the real end and retry the allocation.
+
     tlab.set_back_allocation_end();
     mem = tlab.allocate(_word_size);
-
-    // We set back the allocation sample point to try to allocate this, reset it
-    // when done.
-    allocation._tlab_end_reset_for_sample = true;
 
     if (mem != nullptr) {
       return mem;

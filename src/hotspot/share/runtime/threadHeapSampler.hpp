@@ -37,7 +37,7 @@ class ThreadHeapSampler {
   static volatile int _sampling_interval;
 
   void pick_next_geometric_sample();
-  void pick_next_sample(size_t overflowed_bytes = 0);
+  void pick_next_sample();
 
   static double fast_log2(const double& d);
   uint64_t next_random(uint64_t rnd);
@@ -53,9 +53,11 @@ class ThreadHeapSampler {
     pick_next_sample();
   }
 
-  size_t bytes_until_sample()                    { return _sampling_threshold;   }
+  size_t sampling_threshold() { return _sampling_threshold;   }
+  size_t bytes_until_sample(size_t allocated_since_last_sample);
 
-  bool maybe_sample(oop obj, size_t tlab_allocted_since_last_sample);
+  bool should_sample(size_t allocated_since_last_sample);
+  void sample(oop obj);
 
   static void set_sampling_interval(int sampling_interval);
   static int get_sampling_interval();
