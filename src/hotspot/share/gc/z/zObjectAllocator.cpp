@@ -99,7 +99,6 @@ zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
     // Allocate new page
     ZPage* const new_page = alloc_page(page_type, page_size, flags);
     if (new_page != nullptr) {
-      assert(new_page->is_allocating(), "Inv");
       // Allocate object before installing the new page
       addr = new_page->alloc_object(size);
 
@@ -107,14 +106,13 @@ zaddress ZObjectAllocator::alloc_object_in_shared_page(ZPage** shared_page,
       // Install new page
       ZPage* const prev_page = Atomic::cmpxchg(shared_page, page, new_page);
       if (prev_page != page) {
-        if (prev_page == nullptr || !prev_page->is_allocating()) {
+        if (!page_is_active(prev_page)) {
           // Previous page was retired, retry installing the new page
           page = prev_page;
           goto retry;
         }
 
         // Another page already installed, try allocation there first
-        assert(prev_page->is_allocating(), "Inv");
         const zaddress prev_addr = prev_page->alloc_object_atomic(size);
         if (is_null(prev_addr)) {
           // Allocation failed, retry installing the new page
