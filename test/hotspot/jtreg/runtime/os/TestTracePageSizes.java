@@ -30,7 +30,7 @@
  * @requires os.family == "linux"
  * @requires os.arch != "ppc64le"
  * @requires os.arch != "riscv64" | !(vm.cpu.features ~= ".*qemu.*")
- * @run main/othervm -XX:+AlwaysPreTouch -Xlog:pagesize:ps-%p.log TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xlog:gc,pagesize:ps-%p.log TestTracePageSizes
  */
 
 /*
@@ -42,8 +42,8 @@
  * @requires os.family == "linux"
  * @requires os.arch=="amd64" | os.arch=="x86_64"
  * @requires vm.gc != "Z"
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:+UseLargePages -XX:LargePageSizeInBytes=2m TestTracePageSizes
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx2g -Xlog:pagesize:ps-%p.log -XX:+UseLargePages -XX:LargePageSizeInBytes=1g TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:+UseLargePages -XX:LargePageSizeInBytes=2m TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx2g -Xlog:gc,pagesize:ps-%p.log -XX:+UseLargePages -XX:LargePageSizeInBytes=1g TestTracePageSizes
  */
 
 /*
@@ -56,9 +56,9 @@
  * @requires os.arch != "ppc64le"
  * @requires os.arch != "riscv64" | !(vm.cpu.features ~= ".*qemu.*")
  * @requires vm.gc != "Z" & vm.gc != "Shenandoah"
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:-SegmentedCodeCache TestTracePageSizes
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:-SegmentedCodeCache -XX:+UseLargePages TestTracePageSizes
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:-SegmentedCodeCache -XX:+UseTransparentHugePages TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:-SegmentedCodeCache TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:-SegmentedCodeCache -XX:+UseLargePages TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:-SegmentedCodeCache -XX:+UseTransparentHugePages TestTracePageSizes
  */
 
 /*
@@ -70,9 +70,9 @@
  * @requires os.arch != "ppc64le"
  * @requires os.arch != "riscv64" | !(vm.cpu.features ~= ".*qemu.*")
  * @requires vm.gc.G1
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:+UseG1GC TestTracePageSizes
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:+UseG1GC -XX:+UseLargePages TestTracePageSizes
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:+UseG1GC -XX:+UseTransparentHugePages TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:+UseG1GC TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:+UseG1GC -XX:+UseLargePages TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:+UseG1GC -XX:+UseTransparentHugePages TestTracePageSizes
 */
 
 /*
@@ -84,9 +84,9 @@
  * @requires os.arch != "ppc64le"
  * @requires os.arch != "riscv64" | !(vm.cpu.features ~= ".*qemu.*")
  * @requires vm.gc.Parallel
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:+UseParallelGC TestTracePageSizes
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:+UseParallelGC -XX:+UseLargePages TestTracePageSizes
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:+UseParallelGC -XX:+UseTransparentHugePages TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:+UseParallelGC TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:+UseParallelGC -XX:+UseLargePages TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:+UseParallelGC -XX:+UseTransparentHugePages TestTracePageSizes
 */
 
 /*
@@ -98,9 +98,9 @@
  * @requires os.arch != "ppc64le"
  * @requires os.arch != "riscv64" | !(vm.cpu.features ~= ".*qemu.*")
  * @requires vm.gc.Serial
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:+UseSerialGC TestTracePageSizes
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:+UseSerialGC -XX:+UseLargePages TestTracePageSizes
- * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:pagesize:ps-%p.log -XX:+UseSerialGC -XX:+UseTransparentHugePages TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:+UseSerialGC TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:+UseSerialGC -XX:+UseLargePages TestTracePageSizes
+ * @run main/othervm -XX:+AlwaysPreTouch -Xmx128m -Xlog:gc,pagesize:ps-%p.log -XX:+UseSerialGC -XX:+UseTransparentHugePages TestTracePageSizes
 */
 
 import java.io.File;
@@ -112,7 +112,10 @@ import java.util.LinkedList;
 import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import jdk.test.lib.os.linux.HugePageConfiguration;
 import jdk.test.lib.Platform;
+
 import jtreg.SkippedException;
 
 // Check that page sizes logged match what is recorded in /proc/self/smaps.
@@ -121,6 +124,16 @@ import jtreg.SkippedException;
 public class TestTracePageSizes {
     // Store address ranges with known page size.
     private static LinkedList<RangeWithPageSize> ranges = new LinkedList<>();
+
+    // Store the GC used
+    private static String usedGC = null;
+
+    // Store the range with heap information
+    private static RangeWithPageSize heapRange = null;
+
+    // Store if THP is requested when large pages are enabled
+    private static boolean thpRequested = false;
+
     private static boolean debug;
     private static int run;
 
@@ -249,8 +262,13 @@ public class TestTracePageSizes {
         return 0;
     }
 
+    // Patter strings to match logfile
+    private static Pattern pageSizePattern = Pattern.compile(".*\\] (.*): .*base=(0x[0-9A-Fa-f]*).* page_size=(\\d+[BKMG]).*");
+    private static Pattern usingGCPattern = Pattern.compile(".* Using (.*)");
+    private static Pattern useTransparentHugePagesPattern = Pattern.compile(".*UseTransparentHugePages=1");
+
     // The test needs to be run with:
-    //  * -Xlog:pagesize:ps-%p.log - To generate the log file parsed
+    //  * -Xlog:gc,pagesize:ps-%p.log - To generate the log file parsed
     //    by the test itself.
     //  * -XX:+AlwaysPreTouch - To make sure mapped memory is touched
     //    so the relevant information is recorded in the smaps-file.
@@ -274,49 +292,89 @@ public class TestTracePageSizes {
         // Parse /proc/self/smaps to compare with values logged in the VM.
         parseSmaps();
 
-        // Setup patters for the JVM page size logging.
-        String traceLinePatternString = ".*base=(0x[0-9A-Fa-f]*).* page_size=(\\d+[BKMG]).*";
-        Pattern traceLinePattern = Pattern.compile(traceLinePatternString);
-
         // The test needs to be run with page size logging printed to ps-$pid.log.
         Scanner fileScanner = new Scanner(new File("./ps-" + ProcessHandle.current().pid() + ".log"));
         while (fileScanner.hasNextLine()) {
             String line = fileScanner.nextLine();
-            if (line.matches(traceLinePatternString)) {
-                Matcher trace = traceLinePattern.matcher(line);
-                trace.find();
+            Matcher match;
+            if ((match = pageSizePattern.matcher(line)).matches()) {
+                String id = match.group(1);
+                String address = match.group(2);
+                String pageSize = match.group(3);
 
-                String address = trace.group(1);
-                String pageSize = trace.group(2);
+                verifyMatchingPageSize(id, address, pageSize);
+            } else if ((match = usingGCPattern.matcher(line)).matches()) {
+                String gc = match.group(1);
 
-                RangeWithPageSize range = getRange(address);
-                if (range == null) {
-                    debug("Could not find range for: " + line);
-                    throw new AssertionError("No memory range found for address: " + address);
-                }
-
-                long pageSizeFromSmaps = range.getPageSize();
-                long pageSizeFromTrace = pageSizeInKB(pageSize);
-
-                debug("From logfile: " + line);
-                debug("From smaps: " + range);
-
-                if (pageSizeFromSmaps != pageSizeFromTrace) {
-                    if (pageSizeFromTrace > pageSizeFromSmaps && range.isTransparentHuge()) {
-                        // Page sizes mismatch because we can't know what underlying page size will
-                        // be used when THP is enabled. So this is not a failure.
-                        debug("Success: " + pageSizeFromTrace + " > " + pageSizeFromSmaps + " and THP enabled");
-                    } else {
-                        debug("Failure: " + pageSizeFromSmaps + " != " + pageSizeFromTrace);
-                        throw new AssertionError("Page sizes mismatch: " + pageSizeFromSmaps + " != " + pageSizeFromTrace);
-                    }
-                } else {
-                    debug("Success: " + pageSizeFromSmaps + " == " + pageSizeFromTrace);
-                }
+                storeGCUsed(gc);
+            } else if (useTransparentHugePagesPattern.matcher(line).matches()) {
+                thpRequested = true;
             }
-            debug("---");
         }
         fileScanner.close();
+
+        // Additional heap check to make sure we get THP when requested
+        verifyTHPForHeap();
+    }
+
+    private static void verifyMatchingPageSize(String id, String address, String pageSize) {
+        RangeWithPageSize range = getRange(address);
+        if (range == null) {
+            throw new AssertionError("No memory range found for address: " + address);
+        }
+
+        // Save the heap range for additional verification
+        if (id.equals("Heap")) {
+            heapRange = range;
+        }
+
+        long pageSizeFromSmaps = range.getPageSize();
+        long pageSizeFromTrace = pageSizeInKB(pageSize);
+
+        debug("From logfile: id = " + id + ", address = " + address + ", page size = " + pageSize);
+        debug("From smaps: " + range);
+
+        if (pageSizeFromSmaps != pageSizeFromTrace) {
+            if (pageSizeFromTrace > pageSizeFromSmaps && range.isTransparentHuge()) {
+                // Page sizes mismatch because we can't know what underlying page size will
+                // be used when THP is enabled. So this is not a failure.
+                debug("Success: " + pageSizeFromTrace + " > " + pageSizeFromSmaps + " and THP enabled");
+            } else {
+                debug("Failure: " + pageSizeFromSmaps + " != " + pageSizeFromTrace);
+                throw new AssertionError("Page sizes mismatch: " + pageSizeFromSmaps + " != " + pageSizeFromTrace);
+            }
+        } else {
+            debug("Success: " + pageSizeFromSmaps + " == " + pageSizeFromTrace);
+        }
+        debug("---");
+    }
+
+    private static void storeGCUsed(String gc) {
+        usedGC = gc;
+        debug("GC name: " + usedGC);
+    }
+
+    private static void verifyTHPForHeap() throws Exception {
+        if (usedGC.equals("The Z Garbage Collector")) {
+            // ZGC does not log any page size info for the heap
+            return;
+        }
+
+        // Make sure test is run with correct logging
+        if (usedGC == null || heapRange == null) {
+            throw new AssertionError("Could not find GC or heap range");
+        }
+
+        final HugePageConfiguration hugePageConfiguration = HugePageConfiguration.readFromOS();
+        debug("Verify THP for " + usedGC + ": requested = " + thpRequested +
+              ", os mode = " + hugePageConfiguration.getThpMode() +
+              ", heap eligible = " + heapRange.isTransparentHuge());
+        if (thpRequested && hugePageConfiguration.supportsTHP()) {
+            // User requested THP and it is available, then heap should be THPeligible
+            if (!heapRange.isTransparentHuge()) {
+                throw new AssertionError("Heap not THP eligible even though THP is available and requested");
+            }
+        }
     }
 
     private static void debug(String str) {
