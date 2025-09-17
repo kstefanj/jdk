@@ -158,8 +158,7 @@ public class TestTracePageSizes {
         }
 
         // Parse /proc/self/smaps to compare with values logged in the VM.
-        Smaps.Parser smapsParser = new Smaps.Parser();
-        smapsParser.parse("-" + (run++));
+        Smaps smaps = Smaps.parseSelf();
 
         // Setup patters for the JVM page size logging.
         String traceLinePatternString = ".*base=(0x[0-9A-Fa-f]*).* page_size=(\\d+[BKMG]).*";
@@ -176,7 +175,7 @@ public class TestTracePageSizes {
                 String address = trace.group(1);
                 String pageSize = trace.group(2);
 
-                Range range = smapsParser.getRange(address);
+                Range range = smaps.getRange(address);
                 if (range == null) {
                     debug("Could not find range for: " + line);
                     throw new AssertionError("No memory range found for address: " + address);

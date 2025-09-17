@@ -35,12 +35,38 @@ import java.util.regex.Pattern;
 
 public class Smaps {
 
+    // List of memory ranges
+    private List<Range> ranges;
+
+    protected Smaps(List<Range> ranges) {
+        this.ranges = ranges;
+    }
+
+    // Search for a range including the given address.
+    public Range getRange(String addr) {
+        BigInteger laddr = new BigInteger(addr.substring(2), 16);
+        for (Range range : ranges) {
+            if (range.includes(laddr)) {
+                return range;
+            }
+        }
+
+        return null;
+    }
+
+    public static Smaps parseSelf() throws Exception {
+        return parse(Path.of("/proc/self/smaps"));
+    }
+
+    public static Smaps parse(Path smaps) throws Exception {
+        return new Parser(smaps).parse();
+    }
+
     // This is a simple smaps parser; it will recognize smaps section start lines
     //  (e.g. "40fa00000-439b80000 rw-p 00000000 00:00 0 ") and look for keywords inside the section.
     // Section will be finished and written into a RangeWithPageSize when either the next section is found
     //  or the end of file is encountered.
-    public static class Parser {
-        private static final List<Range> ranges = new LinkedList<>();
+    private static class Parser {
 
         private static final Pattern SECTION_START_PATT = Pattern.compile("^([a-f0-9]+)-([a-f0-9]+) [\\-rwpsx]{4}.*");
         private static final Pattern KERNEL_PAGESIZE_PATT = Pattern.compile("^KernelPageSize:\\s*(\\d*) kB");
@@ -52,6 +78,15 @@ public class Smaps {
         String ps;
         String thpEligible;
         String vmFlags;
+
+        List<Range> ranges;
+        Path smaps;
+
+        Parser(Path smaps) {
+            this.ranges = new LinkedList<Range>();
+            this.smaps = smaps;
+            reset();
+        }
 
         void reset() {
             start = null;
@@ -103,44 +138,22 @@ public class Smaps {
 
         // Copy smaps locally
         // (To minimize chances of concurrent modification when parsing, as well as helping with error analysis)
-        private Path copySmaps(String postfix) throws Exception {
-            Path p1 = Paths.get("/proc/self/smaps");
-            Path p2 = Paths.get("smaps-copy-" +  ProcessHandle.current().pid() + postfix + ".txt");
-            Files.copy(p1, p2, StandardCopyOption.REPLACE_EXISTING);
-            return p2;
-        }
-
-        // Parse /proc/self/smaps.
-        public void parse() throws Exception {
-            parse("");
-        }
-
-        public void parse(String postfix) throws Exception {
-            // We can override the smaps file to parse to pass in a pre-fetched one
-            String smapsFileToParse = System.getProperty("smaps-file");
-            if (smapsFileToParse != null) {
-                parse(Paths.get(smapsFileToParse));
-            } else {
-                Path smapsCopy = copySmaps(postfix);
-                parse(smapsCopy);
-            }
+        private Path copySmaps() throws Exception {
+            Path copy = Paths.get("smaps-copy-" +  ProcessHandle.current().pid() + "-" + System.nanoTime() + ".txt");
+            Files.copy(smaps, copy, StandardCopyOption.REPLACE_EXISTING);
+            return copy;
         }
 
         // Parse /proc/self/smaps
-        public void parse(Path smapsFileToParse) throws Exception {
-            Files.lines(smapsFileToParse).forEach(this::eatNext);
-            this.finish();
-        }
+        public Smaps parse() throws Exception {
+            Path smapsCopy = copySmaps();
+            Files.lines(smapsCopy).forEach(this::eatNext);
 
-        // Search for a range including the given address.
-        public Range getRange(String addr) {
-            BigInteger laddr = new BigInteger(addr.substring(2), 16);
-            for (Range range : ranges) {
-                if (range.includes(laddr)) {
-                    return range;
-                }
-            }
-            return null;
+            // Finish up the last range
+            this.finish();
+
+            // Return a Smaps object with the parsed ranges
+            return new Smaps(ranges);
         }
     }
 

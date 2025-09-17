@@ -100,10 +100,9 @@ public class TestTransparentHugePagesHeap {
             // Extract the heap start from pagesize logging
             String heapStart = extractHeapStartFromLog();
 
-            Smaps.Parser smapsParser = new Smaps.Parser();
-            smapsParser.parse();
+            Smaps smaps = Smaps.parseSelf();
 
-            Range range = smapsParser.getRange(heapStart);
+            Range range = smaps.getRange(heapStart);
             if (range == null) {
                 throw new AssertionError("Could not find heap section in smaps file. No memory range found for heap start: " + heapStart);
             }
