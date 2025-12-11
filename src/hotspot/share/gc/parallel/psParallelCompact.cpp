@@ -1462,6 +1462,14 @@ static bool safe_to_read_header(size_t words) {
   return words >= (size_t)oopDesc::header_size();
 }
 
+static markWord safe_mark_prototype(HeapWord* addr, size_t safe_size) {
+  if (UseCompactObjectHeaders || (EnableValhalla && safe_to_read_header(safe_size))) {
+    return cast_to_oop(addr)->klass()->prototype_header();
+  } else {
+    return markWord::prototype();
+  }
+}
+
 void PSParallelCompact::forward_to_new_addr() {
   GCTraceTime(Info, gc, phases) tm("Forward", &_gc_timer);
   uint nworkers = ParallelScavengeHeap::heap()->workers().active_workers();
@@ -2260,11 +2268,7 @@ void PSParallelCompact::fill_region(ParCompactionManager* cm, MoveAndUpdateClosu
         // This obj doesn't extend into next region; size() is safe to use.
         obj_size = cast_to_oop(cur_addr)->size();
       }
-
-      size_t remaining_words = pointer_delta(end_addr, cur_addr);
-      bool safe_header = safe_to_read_header(remaining_words);
-
-      closure.do_addr(cur_addr, obj_size, safe_header);
+      closure.do_addr(cur_addr, obj_size, safe_mark_prototype(cur_addr, pointer_delta(end_addr, cur_addr)));
 
       cur_addr += obj_size;
     } while (cur_addr < end_addr && !closure.is_full());
@@ -2385,19 +2389,7 @@ void MoveAndUpdateClosure::complete_region(HeapWord* dest_addr, PSParallelCompac
   region_ptr->set_completed();
 }
 
-void MoveAndUpdateClosure::reinit_mark(oop copy_destination, Klass* klass) {
-  // If there are bits in the markWord that needs to be preserved which we cannot
-  // recreate here, the markWord has been preserved before compaction and will be
-  // restored after compaction is finished.
-
-  if (UseCompactObjectHeaders || (EnableValhalla && klass != nullptr)) {
-    copy_destination->set_mark(klass->prototype_header());
-  } else {
-    copy_destination->set_mark(markWord::prototype());
-  }
-}
-
-void MoveAndUpdateClosure::do_addr(HeapWord* addr, size_t words, bool safe_header) {
+void MoveAndUpdateClosure::do_addr(HeapWord* addr, size_t words, markWord mark) {
   assert(destination() != nullptr, "sanity");
   _source = addr;
 
@@ -2415,11 +2407,8 @@ void MoveAndUpdateClosure::do_addr(HeapWord* addr, size_t words, bool safe_heade
     assert(source() != destination(), "inv");
     assert(FullGCForwarding::is_forwarded(cast_to_oop(source())), "inv");
     assert(FullGCForwarding::forwardee(cast_to_oop(source())) == cast_to_oop(destination()), "inv");
-    // We need to read the klass before the object is copied as it may be
-    // overwritten in the copy
-    Klass* klass = safe_header ? cast_to_oop(source())->klass() : nullptr;
     Copy::aligned_conjoint_words(source(), copy_destination(), words);
-    reinit_mark(cast_to_oop(copy_destination()), klass);
+    cast_to_oop(copy_destination())->set_mark(mark);
   }
 
   update_state(words);
