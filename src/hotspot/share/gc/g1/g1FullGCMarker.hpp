@@ -73,13 +73,13 @@ class G1FullGCMarker : public CHeapObj<mtGC> {
   inline bool mark_object(oop obj);
 
   // Marking helpers
-  inline void scan_array_chunk(objArrayOop obj, size_t start, size_t end);
+  inline void process_array_chunk(objArrayOop obj, size_t start, size_t end);
   inline void dispatch_task(const ScannerTask& task, bool stolen);
   // Start processing the given objArrayOop by first pushing its continuations and
   // then scanning the first chunk.
-  void start_partial_array_scanning(objArrayOop obj);
+  void start_partial_array_processing(objArrayOop obj);
   // Process the given continuation.
-  void scan_partial_array(PartialArrayState* state, bool stolen);
+  void process_partial_array(PartialArrayState* state, bool stolen);
 
   inline void publish_and_drain_oop_tasks();
 public:
