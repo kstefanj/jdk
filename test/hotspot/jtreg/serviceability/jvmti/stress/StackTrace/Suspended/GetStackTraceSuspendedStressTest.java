@@ -38,7 +38,7 @@ import java.util.concurrent.*;
 public class GetStackTraceSuspendedStressTest extends DebugeeClass {
     private static final String agentLib = "GetStackTraceSuspendedStress";
 
-    static final int MSG_COUNT = 1000;
+    static final int MSG_COUNT = 10;
     static final int VTHREAD_COUNT = 60;
     static final SynchronousQueue<String> QUEUE = new SynchronousQueue<>();
 

@@ -192,21 +192,23 @@ agentProc(jvmtiEnv * jvmti, JNIEnv * jni, void * arg) {
         return;
       }
       check_jvmti_status(jni, err,  "Error in GetVirtualThread");
-      if (iter > 50 && vthread != nullptr) {
-        // char* cname = get_thread_name(jvmti, jni, cthread);
-        // char* vname = get_thread_name(jvmti, jni, vthread);
+      if (vthread != nullptr) {
+        char* cname = get_thread_name(jvmti, jni, cthread);
+        char* vname = get_thread_name(jvmti, jni, vthread);
 
         err = jvmti->SuspendThread(vthread);
         if (err == JVMTI_ERROR_THREAD_NOT_ALIVE) {
           continue;
         }
         check_jvmti_status(jni, err, "Error in SuspendThread");
-        // LOG("Agent: suspended vt: %s ct: %s\n", vname, cname);
+        LOG("Agent: suspended vt: %s ct: %s\n", vname, cname);
 
+        sleep_ms(2);
         check_vthread_consistency_suspended(jvmti, jni, vthread);
+        sleep_ms(2);
 
         check_jvmti_status(jni, jvmti->ResumeThread(vthread), "Error in ResumeThread");
-        // LOG("Agent: resumed vt: %s ct: %s\n", vname, cname);
+        LOG("Agent: resumed vt: %s ct: %s\n", vname, cname);
       }
     }
     check_jvmti_status(jni, jvmti->Deallocate((unsigned char *) threads), "Error in Deallocate");
@@ -214,7 +216,6 @@ agentProc(jvmtiEnv * jvmti, JNIEnv * jni, void * arg) {
   //check_jvmti_status(jni, jvmti->Deallocate((unsigned char *) vname), "Error in Deallocate");
 
     iter++;
-    sleep_ms(20);
   }
   LOG("Agent: finished\n");
 }
