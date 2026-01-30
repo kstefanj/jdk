@@ -24,6 +24,7 @@
 
 #include "code/nmethod.hpp"
 #include "gc/g1/g1Allocator.inline.hpp"
+#include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1CollectedHeap.inline.hpp"
 #include "gc/g1/g1ConcurrentMarkThread.hpp"
 #include "gc/g1/g1HeapRegion.inline.hpp"
@@ -359,7 +360,7 @@ void G1HeapVerifier::verify(VerifyOption vo) {
   }
 
   log_debug(gc, verify)("HeapRegions");
-
+  G1BarrierSet::g1_barrier_set()->protect_rct(true);
   G1VerifyTask task(_g1h, vo);
   _g1h->workers()->run_task(&task);
   if (failures || task.failures()) {
@@ -374,6 +375,7 @@ void G1HeapVerifier::verify(VerifyOption vo) {
 
     fatal("there should not have been any failures");
   }
+  G1BarrierSet::g1_barrier_set()->protect_rct(false);
 }
 
 // Heap region set verification

@@ -109,6 +109,8 @@ public:
 
   void verify_region(MemRegion mr, CardValue val, bool val_equals) override;
 
+  void protect(MemRegion mr);
+
   size_t index_for_cardvalue(CardValue const* p) const {
     return pointer_delta(p, _byte_map, sizeof(CardValue));
   }

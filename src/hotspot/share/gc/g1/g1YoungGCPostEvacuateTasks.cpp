@@ -844,6 +844,20 @@ public:
     : G1AbstractSubTask(G1GCPhaseTimes::ResizeThreadLABs), _claimer(ThreadsPerWorker)
   {
     G1BarrierSet::g1_barrier_set()->swap_global_card_table();
+
+
+    /*class VC : public G1HeapRegionClosure {
+      bool do_heap_region(G1HeapRegion* hr) {
+        G1CardTable* ct = G1CollectedHeap::heap()->refinement_table();
+        MemRegion mr(hr->bottom(), hr->end());
+        ct->verify_region(mr, G1CardTable::clean_card_val(), true);
+        return false;
+      }
+    } cl;
+    if (UseNewCode) {
+      G1CollectedHeap::heap()->heap_region_iterate(&cl);
+    }*/
+    G1BarrierSet::g1_barrier_set()->protect_rct(false);
   }
 
   void do_work(uint worker_id) override {

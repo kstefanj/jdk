@@ -482,6 +482,8 @@ public:
 
   void clear_both_card_tables();
 
+  void protect_ct();
+
   // Notify the region that an evacuation failure occurred for an object within this
   // region.
   void note_evacuation_failure();

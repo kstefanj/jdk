@@ -22,7 +22,10 @@
  *
  */
 
+#include "gc/g1/g1CardTable.hpp"
+#include "gc/g1/g1CollectedHeap.inline.hpp"
 #include "gc/g1/g1HeapRegion.hpp"
+#include "gc/g1/g1HeapRegionPrinter.hpp"
 #include "gc/g1/g1SurvivorRegions.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/growableArray.hpp"

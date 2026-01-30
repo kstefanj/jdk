@@ -80,6 +80,7 @@ class G1BarrierSet: public CardTableBarrierSet {
 
   // Swap the global card table references, without synchronization.
   void swap_global_card_table();
+  void protect_rct(bool allow_access);
 
   // Update the given thread's card table (byte map) base to the current card table's.
   void update_card_table_base(Thread* thread);

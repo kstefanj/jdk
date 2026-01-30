@@ -162,6 +162,10 @@ void Thread::retire_tlab(ThreadLocalAllocStats* stats) {
   }
 
   // Retire the TLAB
+  if (is_Java_thread() && tlab().end() != nullptr) {
+    ResourceMark rm;
+    log_info(gc, thread)("Retire thread %s, tlab: [" PTR_FORMAT " " PTR_FORMAT " " PTR_FORMAT "]", name(), p2i(tlab().start()), p2i(tlab().top()), p2i(tlab().end()));
+  }
   tlab().retire(stats);
 }
 

@@ -2732,6 +2732,8 @@ void G1CollectedHeap::do_collection_pause_at_safepoint(size_t allocation_word_si
   // been reset for the next pause.
   bool should_start_concurrent_mark_operation = collector_state()->in_concurrent_start_gc();
 
+  G1BarrierSet::g1_barrier_set()->protect_rct(true);
+
   // Perform the collection.
   G1YoungCollector collector(gc_cause(), allocation_word_size);
   collector.collect();
@@ -3186,14 +3188,18 @@ G1HeapRegion* G1CollectedHeap::new_gc_alloc_region(size_t word_size, G1HeapRegio
       // immediately as it is the only source for determining the need for remembered
       // set tracking during GC.
       register_new_survivor_region_with_region_attr(new_alloc_region);
+      new_alloc_region->protect_ct();
+      G1HeapRegionPrinter::alloc(new_alloc_region);
+      G1HeapRegionPrinter::protect(new_alloc_region);
     } else {
       new_alloc_region->set_old();
       // Update remembered set/cardset.
       _policy->remset_tracker()->update_at_allocate(new_alloc_region);
       // Synchronize with region attribute table.
       update_region_attr(new_alloc_region);
+      G1HeapRegionPrinter::alloc(new_alloc_region);
     }
-    G1HeapRegionPrinter::alloc(new_alloc_region);
+
     return new_alloc_region;
   }
   return nullptr;
@@ -3224,7 +3230,7 @@ void G1CollectedHeap::mark_evac_failure_object(uint worker_id, const oop obj, si
 }
 
 // Optimized nmethod scanning
-class RegisterNMethodOopClosure: public OopClosure {
+class RegisterNMethodOopClosure : public OopClosure {
   G1CollectedHeap* _g1h;
   nmethod* _nm;
 

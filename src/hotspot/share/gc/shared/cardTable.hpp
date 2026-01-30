@@ -102,6 +102,8 @@ public:
   CardTable(MemRegion whole_heap);
   virtual ~CardTable() = default;
 
+  char* start() { return (char*)_byte_map; }
+  size_t size() { return _byte_map_size; }
   void initialize(void* region0_start, void* region1_start);
 
   // *** Barrier set functions.

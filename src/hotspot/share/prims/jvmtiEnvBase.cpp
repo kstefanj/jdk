@@ -1763,6 +1763,7 @@ JvmtiEnvBase::suspend_thread(oop thread_oop, JavaThread* java_thread, bool singl
       return JVMTI_ERROR_THREAD_SUSPENDED;
     }
     JvmtiVTSuspender::register_vthread_suspend(thread_h());
+    log_info(gc)("Unmounted vthread suspend:" PTR_FORMAT, p2i(thread_oop));
     return JVMTI_ERROR_NONE;
   }
 
@@ -1772,6 +1773,7 @@ JvmtiEnvBase::suspend_thread(oop thread_oop, JavaThread* java_thread, bool singl
 
   // Don't allow hidden thread suspend request.
   if (java_thread->is_hidden_from_external_view()) {
+    log_info(gc)("Hidden carrier," PTR_FORMAT " no suspend:" PTR_FORMAT, p2i(java_thread), p2i(thread_oop));
     return JVMTI_ERROR_NONE;
   }
 
@@ -1780,6 +1782,7 @@ JvmtiEnvBase::suspend_thread(oop thread_oop, JavaThread* java_thread, bool singl
   // and it will be actually suspended at virtual thread unmount transition.
   bool is_thread_carrying = is_thread_carrying_vthread(java_thread, thread_h());
   if (is_thread_carrying) {
+    log_info(gc)("Set carrier thread suspend: requested vthread: " PTR_FORMAT " carried vthread: " PTR_FORMAT, p2i(thread_oop), p2i(java_thread->jvmti_vthread()));
     return java_thread->set_carrier_thread_suspended() ? JVMTI_ERROR_NONE : JVMTI_ERROR_THREAD_SUSPENDED;
   } else {
     // Platform thread (not carrying vthread) or mounted vthread cases.
@@ -1801,6 +1804,7 @@ JvmtiEnvBase::suspend_thread(oop thread_oop, JavaThread* java_thread, bool singl
       }
       return JVMTI_ERROR_THREAD_SUSPENDED;
     }
+    log_info(gc)("Carrier thread suspend: ct: " PTR_FORMAT " vthread: " PTR_FORMAT, p2i(java_thread), p2i(thread_oop));
     return JVMTI_ERROR_NONE;
   }
 }
@@ -2580,6 +2584,9 @@ GetStackTraceClosure::do_thread(Thread *target) {
     _result = ((JvmtiEnvBase *)_env)->get_stack_trace(jt,
                                                       _start_depth, _max_count,
                                                       _frame_buffer, _count_ptr);
+    log_info(gc)("GetStackTrace java-thread (%d): " PTR_FORMAT, _result, p2i(jt));
+  } else {
+    log_info(gc)("GetStackTrace java-thread: NA");
   }
 }
 
@@ -2588,10 +2595,15 @@ GetStackTraceClosure::do_vthread(Handle target_h) {
   Thread* current = Thread::current();
   ResourceMark rm(current);
 
+  oop vt = target_h();
+  oop cont = java_lang_VirtualThread::continuation(vt);
+  JavaThread* java_thread = ((JvmtiEnvBase *)_env)->get_JavaThread_or_null(vt);
+
   javaVFrame *jvf = JvmtiEnvBase::get_vthread_jvf(target_h());
   _result = ((JvmtiEnvBase *)_env)->get_stack_trace(jvf,
                                                     _start_depth, _max_count,
                                                     _frame_buffer, _count_ptr);
+  log_info(gc)("GetStackTrace vthread (%d): " PTR_FORMAT " JT: " PTR_FORMAT " cont: " PTR_FORMAT, _result, p2i(vt), p2i(java_thread), p2i(cont));
 }
 
 #ifdef ASSERT

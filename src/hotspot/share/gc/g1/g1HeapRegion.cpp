@@ -24,6 +24,7 @@
 
 #include "code/nmethod.hpp"
 #include "gc/g1/g1Allocator.inline.hpp"
+#include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BlockOffsetTable.inline.hpp"
 #include "gc/g1/g1CollectedHeap.inline.hpp"
 #include "gc/g1/g1CollectionSet.hpp"
@@ -143,9 +144,20 @@ void G1HeapRegion::clear_card_table() {
   ct->clear_MemRegion(MemRegion(bottom(), end()));
 }
 
+void G1HeapRegion::protect_ct() {
+  G1CardTable* ct = G1CollectedHeap::heap()->card_table();
+  ct->protect(MemRegion(bottom(), end()));
+}
+
 void G1HeapRegion::clear_refinement_table() {
   G1CardTable* ct = G1CollectedHeap::heap()->refinement_table();
+  if (UseNewCode) {
+    G1BarrierSet::g1_barrier_set()->protect_rct(true);
+  }
   ct->clear_MemRegion(MemRegion(bottom(), end()));
+  if (UseNewCode) {
+    G1BarrierSet::g1_barrier_set()->protect_rct(false);
+  }
 }
 
 void G1HeapRegion::clear_both_card_tables() {

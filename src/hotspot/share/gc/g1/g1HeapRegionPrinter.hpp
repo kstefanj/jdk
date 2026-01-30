@@ -72,6 +72,9 @@ public:
   static void inactive(G1HeapRegion* hr)                  { print("INACTIVE", hr); }
 
   static void uncommit(G1HeapRegion* hr)                  { print("UNCOMMIT", hr); }
+  static void protect(G1HeapRegion* hr)                   { print("PROTECT CT", hr); }
+  static void no_clear_ct(G1HeapRegion* hr)               { print("ALREADY CT", hr); }
+  static void clear_ct(G1HeapRegion* hr)                  { print("CLEAR CT", hr); }
 };
 
 #endif // SHARE_GC_G1_G1HEAPREGIONPRINTER_HPP

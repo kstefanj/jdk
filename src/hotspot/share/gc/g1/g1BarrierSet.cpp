@@ -39,6 +39,7 @@
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/orderAccess.hpp"
+#include "runtime/os.hpp"
 #include "runtime/threads.hpp"
 #include "utilities/macros.hpp"
 #ifdef COMPILER1
@@ -71,6 +72,19 @@ void G1BarrierSet::swap_global_card_table() {
   G1CardTable* temp = static_cast<G1CardTable*>(_card_table);
   _card_table = _refinement_table;
   _refinement_table = temp;
+  log_info(gc, thread)("ct byte base: " PTR_FORMAT " rt byte base: " PTR_FORMAT, p2i(_card_table->byte_map_base()), p2i(_refinement_table->byte_map_base()));
+}
+
+void G1BarrierSet::protect_rct(bool allow_access) {
+  if(!UseNewCode) {
+    return;
+  }
+
+  if (allow_access) {
+    os::unguard_memory(_refinement_table->start(), _refinement_table->size());
+  } else {
+     os::guard_memory(_refinement_table->start(), _refinement_table->size());
+  }
 }
 
 void G1BarrierSet::update_card_table_base(Thread* thread) {
@@ -81,6 +95,10 @@ void G1BarrierSet::update_card_table_base(Thread* thread) {
   }
 #endif
   G1ThreadLocalData::set_byte_map_base(thread, _card_table->byte_map_base());
+  ResourceMark rm;
+  if (StringUtils::strstr_nocase(thread->name(), "ForkJoin") != nullptr) {
+    log_info(gc, thread)("Update ct to " PTR_FORMAT ": %s", p2i(_card_table->byte_map_base()), thread->name());
+  }
 }
 
 template <class T> void

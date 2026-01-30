@@ -26,7 +26,7 @@
  * @summary Verifies JVMTI GetStackTrace functions called after vthread is suspended.
  * @library /test/lib
  * @compile GetStackTraceSuspendedStressTest.java
- * @run main/othervm/native -agentlib:GetStackTraceSuspendedStress GetStackTraceSuspendedStressTest
+ * @run main/othervm/native -agentlib:GetStackTraceSuspendedStress -Xms2m -Xmx16m GetStackTraceSuspendedStressTest
  */
 
 import jdk.test.lib.jvmti.DebugeeClass;
@@ -38,8 +38,8 @@ import java.util.concurrent.*;
 public class GetStackTraceSuspendedStressTest extends DebugeeClass {
     private static final String agentLib = "GetStackTraceSuspendedStress";
 
-    static final int MSG_COUNT = 1000;
-    static final int VTHREAD_COUNT = 60;
+    static final int MSG_COUNT = 10000;
+    static final int VTHREAD_COUNT = 100;
     static final SynchronousQueue<String> QUEUE = new SynchronousQueue<>();
 
     static void producer(String msg) throws InterruptedException {
@@ -51,10 +51,13 @@ public class GetStackTraceSuspendedStressTest extends DebugeeClass {
         QUEUE.put(msg);
     }
 
+    static Object[] holder = new Object[1000];
+
     static void producer() {
         try {
             for (int i = 0; i < MSG_COUNT; i++) {
                 producer("msg: ");
+                holder[i % 333] = new Object[128];
             }
         } catch (InterruptedException e) { }
     }
@@ -63,6 +66,7 @@ public class GetStackTraceSuspendedStressTest extends DebugeeClass {
         try {
             for (int i = 0; i < MSG_COUNT; i++) {
                 String s = QUEUE.take();
+                holder[i % 1000] = new Object[128];
             }
         } catch (InterruptedException e) { }
     }
@@ -105,8 +109,11 @@ public class GetStackTraceSuspendedStressTest extends DebugeeClass {
 
     void runTest() throws Exception {
         // sync point to start agent thread
-        checkStatus(0);
-        test1();
+        for (int i = 0; i < 1; i++) {
+            checkStatus(0);
+            test1();
+            //resetAgentData();
+        }
     }
 
     public static void main(String[] args) throws Exception {

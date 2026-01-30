@@ -38,6 +38,7 @@
 #include "gc/g1/g1GCPhaseTimes.hpp"
 #include "gc/g1/g1HeapRegion.inline.hpp"
 #include "gc/g1/g1HeapRegionManager.inline.hpp"
+#include "gc/g1/g1HeapRegionPrinter.hpp"
 #include "gc/g1/g1HeapRegionRemSet.inline.hpp"
 #include "gc/g1/g1OopClosures.inline.hpp"
 #include "gc/g1/g1Policy.hpp"
@@ -216,11 +217,16 @@ class G1ClearCardTableTask : public G1AbstractSubTask {
 
         for (uint i = next; i < max; i++) {
           G1HeapRegion* r = _g1h->region_at(_regions->at(i));
+          if (r->is_young() && UseNewCode) {
+            G1HeapRegionPrinter::no_clear_ct(r);
+            continue;
+          }
           // The card table contains "dirty" card marks. Clear unconditionally.
           //
           // Humongous reclaim candidates are not in the dirty set. This is fine because
           // we clean their card and refinement tables when we reclaim separately.
           r->clear_card_table();
+          G1HeapRegionPrinter::clear_ct(r);
           // There is no need to clear the refinement table here: at the start of the collection
           // we had to clear the refinement card table for collection set regions already, and any
           // old regions use it for old->collection set candidates, so they should not be cleared
@@ -792,6 +798,7 @@ class MergeRefinementTableTask : public WorkerTask {
 
     bool do_heap_region(G1HeapRegion* r) override {
       if (!_scan_state->has_unclaimed_cards(r->hrm_index())) {
+        log_info(gc)("NUC (%u)", r->hrm_index());
         return false;
       }
 
@@ -808,7 +815,10 @@ class MergeRefinementTableTask : public WorkerTask {
         // We could get away here with just clearing the area from the current
         // claim to the last card in the region, but for now just do it all.
         if (claim < G1HeapRegion::CardsPerRegion) {
+          log_info(gc)("CRT (%u): %u / %zu", r->hrm_index(), claim, G1HeapRegion::CardsPerRegion);
           r->clear_refinement_table();
+        } else {
+          log_info(gc)("NOP (%u): %u / %zu", r->hrm_index(), claim, G1HeapRegion::CardsPerRegion);
         }
         return false;
       }
@@ -1049,6 +1059,11 @@ class G1MergeHeapRootsTask : public WorkerTask {
         hr->clear_refinement_table();
       } else {
         assert_refinement_table_clear(hr);
+        if (UseNewCode && hr->is_young()) {
+          hr->clear_card_table();
+          hr->protect_ct();
+          G1HeapRegionPrinter::protect(hr);
+        }
       }
       // Evacuation failure uses the bitmap to record evacuation failed objects,
       // so the bitmap for the regions in the collection set must be cleared if not already.

@@ -60,6 +60,12 @@ void G1CardTable::verify_region(MemRegion mr, CardValue val, bool val_equals) {
   guarantee(!failures, "there should not have been any failures");
 }
 
+void G1CardTable::protect(MemRegion mr) {
+  if (UseNewCode) {
+    os::guard_memory((char*)byte_for(mr.start()), compute_size(mr.word_size()));
+  }
+}
+
 void G1CardTableChangedListener::on_commit(uint start_idx, size_t num_regions, bool zero_filled) {
   // Default value for a clean card on the card table is -1. So we cannot take advantage of the zero_filled parameter.
   MemRegion mr(G1CollectedHeap::heap()->bottom_addr_for_region(start_idx), num_regions * G1HeapRegion::GrainWords);
