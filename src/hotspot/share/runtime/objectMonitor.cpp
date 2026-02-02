@@ -1661,6 +1661,7 @@ void ObjectMonitor::exit_epilog(JavaThread* current, ObjectWaiter* Wakee) {
     Trigger = t->_ParkEvent;
     set_successor(t);
   } else {
+    assert_not_at_safepoint();
     vthread = Wakee->vthread();
     assert(vthread != nullptr, "");
     Trigger = ObjectMonitor::vthread_unparker_ParkEvent();
