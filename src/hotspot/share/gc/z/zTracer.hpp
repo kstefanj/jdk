@@ -37,6 +37,7 @@ private:
   static void send_stat_sampler(const ZStatSampler& sampler, uint64_t value);
   static void send_thread_phase(const char* name, const Ticks& start, const Ticks& end);
   static void send_thread_debug(const char* name, const Ticks& start, const Ticks& end);
+  static void send_memory_metrics(size_t hc);
 
 public:
   static void initialize();
@@ -45,6 +46,7 @@ public:
   static void report_stat_sampler(const ZStatSampler& sampler, uint64_t value);
   static void report_thread_phase(const char* name, const Ticks& start, const Ticks& end);
   static void report_thread_debug(const char* name, const Ticks& start, const Ticks& end);
+  static void report_memory_metrics(size_t hc);
 };
 
 class ZMinorTracer : public GCTracer {

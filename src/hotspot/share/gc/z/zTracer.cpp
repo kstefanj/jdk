@@ -28,6 +28,7 @@
 #include "gc/z/zStat.hpp"
 #include "gc/z/zTracer.hpp"
 #include "jfr/jfrEvents.hpp"
+#include "jfrfiles/jfrEventClasses.hpp"
 #include "runtime/safepointVerifiers.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/macros.hpp"
@@ -166,6 +167,16 @@ void ZTracer::send_thread_debug(const char* name, const Ticks& start, const Tick
     e.set_name(name);
     e.set_starttime(start);
     e.set_endtime(end);
+    e.commit();
+  }
+}
+
+void ZTracer::send_memory_metrics(size_t hc) {
+  NoSafepointVerifier nsv;
+
+  EventZMemoryMetrics e(UNTIMED);
+  if (e.should_commit()) {
+    e.set_heuristicCapacity(hc);
     e.commit();
   }
 }

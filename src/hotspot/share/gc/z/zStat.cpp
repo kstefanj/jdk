@@ -36,6 +36,7 @@
 #include "gc/z/zPageAllocator.inline.hpp"
 #include "gc/z/zRelocationSetSelector.inline.hpp"
 #include "gc/z/zStat.hpp"
+#include "gc/z/zTracer.hpp"
 #include "gc/z/zTracer.inline.hpp"
 #include "gc/z/zUtils.inline.hpp"
 #include "memory/metaspaceUtils.hpp"
@@ -1153,6 +1154,8 @@ void ZStat::run_thread() {
     if (should_print(log)) {
       print(log, history);
     }
+    // Send memory metrics
+    ZTracer::report_memory_metrics(ZHeap::heap()->heuristic_max_capacity());
   }
 
   // At exit print the final stats
