@@ -52,6 +52,13 @@ inline void ZTracer::report_thread_debug(const char* name, const Ticks& start, c
   }
 }
 
+inline void ZTracer::report_memory_metrics(size_t hc, size_t mu, size_t mm, size_t cu, size_t cm) {
+  if (EventZMemoryMetrics::is_enabled()) {
+    send_memory_metrics(hc, mu, mm, cu, cm);
+  }
+}
+
+
 inline ZTraceThreadDebug::ZTraceThreadDebug(const char* name)
   : _start(Ticks::now()),
     _name(name) {}

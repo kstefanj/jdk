@@ -24,6 +24,7 @@
 #include "cppstdlib/limits.hpp"
 #include "gc/shared/gc_globals.hpp"
 #include "gc/z/zAbort.inline.hpp"
+#include "gc/z/zAdaptiveHeap.hpp"
 #include "gc/z/zAdaptiveHeap.inline.hpp"
 #include "gc/z/zCollectedHeap.hpp"
 #include "gc/z/zCPU.inline.hpp"
@@ -36,6 +37,7 @@
 #include "gc/z/zPageAllocator.inline.hpp"
 #include "gc/z/zRelocationSetSelector.inline.hpp"
 #include "gc/z/zStat.hpp"
+#include "gc/z/zTracer.hpp"
 #include "gc/z/zTracer.inline.hpp"
 #include "gc/z/zUtils.inline.hpp"
 #include "memory/metaspaceUtils.hpp"
@@ -1097,6 +1099,14 @@ void ZStat::run_thread() {
     if (should_print(log)) {
       print(log, history);
     }
+    // Send memory metrics
+    const ZMemoryPressureMetrics metrics = ZAdaptiveHeap::memory_pressure_metrics();
+    ZTracer::report_memory_metrics(
+      ZHeap::heap()->heuristic_max_capacity(),
+      metrics._machine._used_memory,
+      metrics._machine._max_memory,
+      metrics._container._used_memory,
+      metrics._container._max_memory);
   }
 
   // At exit print the final stats

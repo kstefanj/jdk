@@ -96,6 +96,15 @@
     <Field type="string" name="name" label="Name" />
   </Event>
 
+  <Event name="ZMemoryMetrics" category="Java Virtual Machine, GC, Detailed" label="ZGC Memory Metrics Event" description="AHS testing event to track resource usage" startTime="false" thread="false" internal="true">
+    <Field type="uint" name="gcId" label="GC Identifier" relation="GcId"/>
+    <Field type="ulong" contentType="bytes" name="heuristicCapacity" label="Heuristic Capacity"/>
+    <Field type="ulong" contentType="bytes" name="machineUsed" label="Machine Used Memory"/>
+    <Field type="ulong" contentType="bytes" name="machineMax" label="Machine Max Memory"/>
+    <Field type="ulong" contentType="bytes" name="containerUsed" label="Container Used Memory"/>
+    <Field type="ulong" contentType="bytes" name="containerMax" label="Container Max Memory"/>
+  </Event>
+
   <Event name="ResidentSetSize" category="Java Virtual Machine, Memory" label="Resident Set Size" description="Resident set size of the process" thread="false" period="everyChunk">
     <Field type="ulong" contentType="bytes" name="size" label="Resident Set Size" description="Resident set size of the process" />
     <Field type="ulong" contentType="bytes" name="peak" label="Resident Set Size Peak Value" description="Resident set size peak value of the process" />
