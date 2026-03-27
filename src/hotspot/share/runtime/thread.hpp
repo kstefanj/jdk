@@ -264,6 +264,9 @@ class Thread: public ThreadShadow {
   ThreadStatisticalInfo _statistical_info;      // Statistics about the thread
 
   JFR_ONLY(DEFINE_THREAD_LOCAL_FIELD_JFR;)      // Thread-local data for jfr
+  jlong _last_wall;
+  jlong _last_cpu_user;
+  jlong _last_cpu_total;
 
   JvmtiRawMonitor* _current_pending_raw_monitor; // JvmtiRawMonitor this thread
                                                  // is waiting to lock
@@ -271,6 +274,14 @@ class Thread: public ThreadShadow {
   // Constructor
   Thread(MemTag mem_tag = mtThread);
   virtual ~Thread() = 0;        // Thread is abstract.
+
+  jlong last_wall() { return _last_wall; }
+  jlong last_cpu_user() { return _last_cpu_user; }
+  jlong last_cpu_total() { return _last_cpu_total; }
+
+  void set_last_wall(jlong wall) { _last_wall = wall; }
+  void set_last_cpu_user(jlong user) { _last_cpu_user = user; }
+  void set_last_cpu_total(jlong total) { _last_cpu_total = total; }
 
   // Manage Thread::current()
   void initialize_thread_current();

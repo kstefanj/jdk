@@ -42,6 +42,7 @@
 #include "jfr/periodic/jfrNetworkUtilization.hpp"
 #include "jfr/periodic/jfrOSInterface.hpp"
 #include "jfr/periodic/jfrThreadCPULoadEvent.hpp"
+#include "jfr/periodic/jfrThreadCPUUsageEvent.hpp"
 #include "jfr/periodic/jfrThreadDumpEvent.hpp"
 #include "jfr/recorder/jfrRecorder.hpp"
 #include "jfr/utilities/jfrThreadIterator.hpp"
@@ -219,6 +220,10 @@ TRACE_REQUEST_FUNC(CPULoad) {
 
 TRACE_REQUEST_FUNC(ThreadCPULoad) {
   JfrThreadCPULoadEvent::send_events();
+}
+
+TRACE_REQUEST_FUNC(ThreadCPUUsage) {
+  JfrThreadCPUUsageEvent::send_usage_events();
 }
 
 TRACE_REQUEST_FUNC(CompilerQueueUtilization) {
