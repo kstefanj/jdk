@@ -95,6 +95,9 @@ Thread::Thread(MemTag mem_tag) {
   _allocated_bytes = 0;
   _current_pending_raw_monitor = nullptr;
   _vm_error_callbacks = nullptr;
+  _last_cpu_total = 0;
+  _last_cpu_user = 0;
+  _last_wall = 0;
 
   // thread-specific hashCode stream generator state - Marsaglia shift-xor form
   // If we are dumping, keep ihashes constant. Note that during dumping we only

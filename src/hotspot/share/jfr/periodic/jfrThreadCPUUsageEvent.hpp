@@ -28,13 +28,15 @@
 #include "jni.h"
 #include "memory/allStatic.hpp"
 
-class JavaThread;
 class EventThreadCPUUsage;
+class JavaThread;
+class NonJavaThread;
 
 class JfrThreadCPUUsageEvent : public AllStatic {
  public:
   static jlong get_wallclock_time();
   static bool update_event(EventThreadCPUUsage& event, JavaThread* thread, jlong cur_wallclock_time);
+  static bool update_event_nj(EventThreadCPUUsage& event, NonJavaThread* thread, jlong cur_wallclock_time);
   static void send_usage_events();
   static void send_event_for_thread(JavaThread* jt);
 };

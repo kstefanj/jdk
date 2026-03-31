@@ -60,7 +60,29 @@ void JfrThreadCPUUsageEvent::send_usage_events() {
       event.commit();
     }
   }
-  log_trace(jfr)("Measured CPU usage for %d threads in %.3f milliseconds", number_of_threads,
+  log_info(gc)("Measured CPU usage for %d Java threads in %.3f milliseconds", number_of_threads,
+    (double)(JfrTicks::now() - event_time).milliseconds());
+
+  JfrNonJavaThreadIterator non;
+  int number_of_threads_nj = 0;
+  while (non.has_next()) {
+    NonJavaThread* const jt = non.next();
+    assert(jt != nullptr, "invariant");
+    ++number_of_threads_nj;
+    EventThreadCPUUsage event(UNTIMED);
+    if (update_event_nj(event, jt, cur_wallclock_time)) {
+      event.set_starttime(event_time);
+      event.set_endtime(event_time);
+      if (jt != periodic_thread) {
+        // Commit reads the thread id from this thread's trace data, so put it there temporarily
+        JfrThreadLocal::impersonate(periodic_thread, JFR_JVM_THREAD_ID(jt));
+      } else {
+        JfrThreadLocal::impersonate(periodic_thread, periodic_thread_id);
+      }
+      event.commit();
+    }
+  }
+  log_info(gc)("Measured CPU usage for %d NonJava threads in %.3f milliseconds", number_of_threads_nj,
     (double)(JfrTicks::now() - event_time).milliseconds());
   JfrThreadLocal::stop_impersonating(periodic_thread);
 }
@@ -102,3 +124,29 @@ bool JfrThreadCPUUsageEvent::update_event(EventThreadCPUUsage& event, JavaThread
   return true;
 }
 
+bool JfrThreadCPUUsageEvent::update_event_nj(EventThreadCPUUsage& event, NonJavaThread* thread, jlong cur_wallclock_time) {
+  jlong cur_cpu_total = os::thread_cpu_time(thread, true);
+  jlong cur_cpu_user = os::thread_cpu_time(thread, false);
+
+  jlong prev_cpu_total = thread->last_cpu_total();
+  jlong prev_cpu_user = thread->last_cpu_user();
+  jlong prev_wall = thread->last_wall();
+
+  jlong user_diff = cur_cpu_user - prev_cpu_user;
+  jlong total_diff = cur_cpu_total - prev_cpu_total;
+  jlong wall_diff = cur_wallclock_time - prev_wall;
+
+  if (total_diff == 0) {
+    return false;
+  }
+
+  event.set_threadState(JavaThreadState::_thread_in_vm);
+  event.set_totalNanosDelta(total_diff);
+  event.set_userNanosDelta(user_diff);
+  event.set_wallNanosDelta(wall_diff);
+
+  thread->set_last_cpu_total(cur_cpu_total);
+  thread->set_last_cpu_user(cur_cpu_user);
+  thread->set_last_wall(cur_wallclock_time);
+  return true;
+}

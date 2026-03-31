@@ -885,7 +885,7 @@
   </Event>
 
   <Event name="ThreadCPUUsage" category="Operating System, Processor" label="Thread CPU Usage" period="everyChunk" thread="true">
-    <Field type="ThreadState" name="threadState" label="Thread State" />
+    <Field type="int" name="threadState" label="Thread State" />
     <Field type="long" contentType="nanos" name="userNanosDelta" label="User CPU Nanos Delta" description="User mode thread CPU time delta" />
     <Field type="long" contentType="nanos" name="totalNanosDelta" label="Total CPU Nanos Delta" description="Total thread CPU time delta" />
     <Field type="long" contentType="nanos" name="wallNanosDelta" label="Wall Clock Nanos Delta" description="Wall clock time delta" />
